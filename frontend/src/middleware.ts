@@ -37,6 +37,10 @@ export const config = {
     '/imaging/:path*',
     '/cdss/:path*',
     '/reports/:path*',
+    '/appointments/:path*',
+    '/procedures/:path*',
+    '/referrals/:path*',
+    '/billing/:path*',
 
     // Admin routes
     '/admin/:path*',
