@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, require_permission
 from app.core.permissions import Permission
-from app.db.session import get_session
+from app.db.session import get_db
 from app.modules.encounter.schemas import (
     EncounterComplete,
     EncounterCreate,
@@ -38,7 +38,7 @@ router = APIRouter(prefix="/encounters", tags=["Encounters"])
 
 
 def get_encounter_service(
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ) -> EncounterService:
     """Get encounter service with current user context."""
@@ -54,8 +54,7 @@ def get_encounter_service(
 # ============================================================================
 
 
-@router.get("", response_model=EncounterListResponse)
-@require_permission(Permission.VIEW_PATIENTS)
+@router.get("", response_model=EncounterListResponse, dependencies=[Depends(require_permission(Permission.PATIENT_READ))])
 async def list_encounters(
     patient_id: Optional[int] = Query(None, description="Filter by patient"),
     status: Optional[EncounterStatus] = Query(None, description="Filter by status"),
@@ -103,8 +102,7 @@ async def list_encounters(
     )
 
 
-@router.get("/today", response_model=list[EncounterResponse])
-@require_permission(Permission.VIEW_PATIENTS)
+@router.get("/today", response_model=list[EncounterResponse], dependencies=[Depends(require_permission(Permission.PATIENT_READ))])
 async def get_today_encounters(
     service: EncounterService = Depends(get_encounter_service),
 ) -> list[EncounterResponse]:
@@ -113,8 +111,7 @@ async def get_today_encounters(
     return [await service.build_encounter_response(e) for e in encounters]
 
 
-@router.post("", response_model=EncounterResponse, status_code=status.HTTP_201_CREATED)
-@require_permission(Permission.EDIT_PATIENTS)
+@router.post("", response_model=EncounterResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission(Permission.PATIENT_WRITE))])
 async def create_encounter(
     data: EncounterCreate,
     service: EncounterService = Depends(get_encounter_service),
@@ -131,8 +128,7 @@ async def create_encounter(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.get("/{encounter_id}", response_model=EncounterResponse)
-@require_permission(Permission.VIEW_PATIENTS)
+@router.get("/{encounter_id}", response_model=EncounterResponse, dependencies=[Depends(require_permission(Permission.PATIENT_READ))])
 async def get_encounter(
     encounter_id: int,
     service: EncounterService = Depends(get_encounter_service),
@@ -147,8 +143,7 @@ async def get_encounter(
     return await service.build_encounter_response(encounter)
 
 
-@router.put("/{encounter_id}", response_model=EncounterResponse)
-@require_permission(Permission.EDIT_PATIENTS)
+@router.put("/{encounter_id}", response_model=EncounterResponse, dependencies=[Depends(require_permission(Permission.PATIENT_WRITE))])
 async def update_encounter(
     encounter_id: int,
     data: EncounterUpdate,
@@ -164,8 +159,7 @@ async def update_encounter(
     return await service.build_encounter_response(encounter)
 
 
-@router.post("/{encounter_id}/start", response_model=EncounterResponse)
-@require_permission(Permission.EDIT_PATIENTS)
+@router.post("/{encounter_id}/start", response_model=EncounterResponse, dependencies=[Depends(require_permission(Permission.PATIENT_WRITE))])
 async def start_encounter(
     encounter_id: int,
     data: EncounterStart = EncounterStart(),
@@ -185,8 +179,7 @@ async def start_encounter(
     return await service.build_encounter_response(encounter)
 
 
-@router.post("/{encounter_id}/complete", response_model=EncounterResponse)
-@require_permission(Permission.EDIT_PATIENTS)
+@router.post("/{encounter_id}/complete", response_model=EncounterResponse, dependencies=[Depends(require_permission(Permission.PATIENT_WRITE))])
 async def complete_encounter(
     encounter_id: int,
     data: EncounterComplete = EncounterComplete(),
@@ -206,8 +199,7 @@ async def complete_encounter(
     return await service.build_encounter_response(encounter)
 
 
-@router.post("/{encounter_id}/cancel", response_model=EncounterResponse)
-@require_permission(Permission.EDIT_PATIENTS)
+@router.post("/{encounter_id}/cancel", response_model=EncounterResponse, dependencies=[Depends(require_permission(Permission.PATIENT_WRITE))])
 async def cancel_encounter(
     encounter_id: int,
     reason: Optional[str] = Query(None, max_length=500),
@@ -223,8 +215,7 @@ async def cancel_encounter(
     return await service.build_encounter_response(encounter)
 
 
-@router.post("/{encounter_id}/no-show", response_model=EncounterResponse)
-@require_permission(Permission.EDIT_PATIENTS)
+@router.post("/{encounter_id}/no-show", response_model=EncounterResponse, dependencies=[Depends(require_permission(Permission.PATIENT_WRITE))])
 async def mark_no_show(
     encounter_id: int,
     service: EncounterService = Depends(get_encounter_service),
@@ -244,8 +235,7 @@ async def mark_no_show(
 # ============================================================================
 
 
-@router.post("/{encounter_id}/vitals", response_model=VitalsResponse, status_code=status.HTTP_201_CREATED)
-@require_permission(Permission.EDIT_PATIENTS)
+@router.post("/{encounter_id}/vitals", response_model=VitalsResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission(Permission.PATIENT_WRITE))])
 async def record_vitals(
     encounter_id: int,
     data: VitalsCreate,
@@ -265,8 +255,7 @@ async def record_vitals(
     return await service.build_vitals_response(vitals)
 
 
-@router.get("/{encounter_id}/vitals", response_model=list[VitalsResponse])
-@require_permission(Permission.VIEW_PATIENTS)
+@router.get("/{encounter_id}/vitals", response_model=list[VitalsResponse], dependencies=[Depends(require_permission(Permission.PATIENT_READ))])
 async def get_encounter_vitals(
     encounter_id: int,
     service: EncounterService = Depends(get_encounter_service),
@@ -281,8 +270,7 @@ async def get_encounter_vitals(
 # ============================================================================
 
 
-@router.get("/patients/{patient_id}/vitals/latest", response_model=Optional[VitalsResponse])
-@require_permission(Permission.VIEW_PATIENTS)
+@router.get("/patients/{patient_id}/vitals/latest", response_model=Optional[VitalsResponse], dependencies=[Depends(require_permission(Permission.PATIENT_READ))])
 async def get_patient_latest_vitals(
     patient_id: int,
     service: EncounterService = Depends(get_encounter_service),
@@ -294,8 +282,7 @@ async def get_patient_latest_vitals(
     return None
 
 
-@router.get("/patients/{patient_id}/vitals/trend", response_model=list[VitalsResponse])
-@require_permission(Permission.VIEW_PATIENTS)
+@router.get("/patients/{patient_id}/vitals/trend", response_model=list[VitalsResponse], dependencies=[Depends(require_permission(Permission.PATIENT_READ))])
 async def get_patient_vitals_trend(
     patient_id: int,
     limit: int = Query(20, ge=1, le=100),

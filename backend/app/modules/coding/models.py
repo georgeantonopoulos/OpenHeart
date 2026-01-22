@@ -3,7 +3,7 @@
 from sqlalchemy import Boolean, Column, Float, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase
 
-from app.db.session import Base
+from app.db.base import Base
 
 
 class ICD10Code(Base):

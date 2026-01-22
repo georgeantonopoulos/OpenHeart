@@ -239,7 +239,6 @@ class ScheduledProcedure(Base):
     performing_physician = relationship(
         "User",
         foreign_keys=[performing_physician_id],
-        back_populates="scheduled_procedures_performing",
     )
     created_by = relationship(
         "User",

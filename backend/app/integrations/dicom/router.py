@@ -173,7 +173,7 @@ async def delete_study(
     study_uid: str,
     user: Annotated[
         TokenPayload,
-        Depends(require_permission(Permission.CLINICAL_WRITE)),
+        Depends(require_permission(Permission.DICOM_DELETE)),
     ],
     dicom: Annotated[DicomService, Depends(get_dicom_service)],
 ):
@@ -221,7 +221,7 @@ async def link_study_to_patient(
     patient_id: int,
     user: Annotated[
         TokenPayload,
-        Depends(require_permission(Permission.CLINICAL_WRITE)),
+        Depends(require_permission(Permission.PATIENT_WRITE)),
     ],
     dicom: Annotated[DicomService, Depends(get_dicom_service)],
     encounter_id: Optional[int] = None,

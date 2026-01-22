@@ -151,7 +151,7 @@ async def schedule_procedure(
     request: ScheduleProcedureRequest,
     user: Annotated[
         TokenPayload,
-        Depends(require_permission(Permission.CLINICAL_WRITE)),
+        Depends(require_permission(Permission.PATIENT_WRITE)),
     ],
     mwl: Annotated[MWLService, Depends(get_mwl_service)],
 ):
@@ -349,7 +349,7 @@ async def update_procedure_status(
     request: UpdateStatusRequest,
     user: Annotated[
         TokenPayload,
-        Depends(require_permission(Permission.CLINICAL_WRITE)),
+        Depends(require_permission(Permission.PATIENT_WRITE)),
     ],
     mwl: Annotated[MWLService, Depends(get_mwl_service)],
 ):
@@ -381,7 +381,7 @@ async def cancel_procedure(
     request: CancelProcedureRequest,
     user: Annotated[
         TokenPayload,
-        Depends(require_permission(Permission.CLINICAL_WRITE)),
+        Depends(require_permission(Permission.PATIENT_WRITE)),
     ],
     mwl: Annotated[MWLService, Depends(get_mwl_service)],
 ):
@@ -475,7 +475,7 @@ async def create_station(
     request: CreateStationRequest,
     user: Annotated[
         TokenPayload,
-        Depends(require_permission(Permission.CLINIC_ADMIN)),
+        Depends(require_permission(Permission.CLINIC_MANAGE)),
     ],
     mwl: Annotated[MWLService, Depends(get_mwl_service)],
 ):

@@ -115,6 +115,16 @@ class Patient(Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
+    scheduled_procedures: Mapped[list["ScheduledProcedure"]] = relationship(
+        "ScheduledProcedure",
+        back_populates="patient",
+        cascade="all, delete-orphan",
+    )
+    scheduled_procedures: Mapped[list["ScheduledProcedure"]] = relationship(
+        "ScheduledProcedure",
+        back_populates="patient",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         Index("idx_patients_clinic_mrn", "clinic_id", "mrn", unique=True),
