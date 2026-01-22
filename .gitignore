@@ -1,2 +1,190 @@
-/agents/*
+# =============================================================================
+# OpenHeart Cyprus - Comprehensive .gitignore
+# =============================================================================
+
+# =============================================================================
+# ENVIRONMENT & SECRETS
+# =============================================================================
 .env
+.env.local
+.env.*.local
+!.env.example
+
+# =============================================================================
+# PYTHON (Backend - FastAPI)
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+ENV/
+env/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Linting
+.ruff_cache/
+
+# =============================================================================
+# NODE.JS / NEXT.JS (Frontend)
+# =============================================================================
+node_modules/
+.pnp/
+.pnp.js
+
+# Next.js
+.next/
+out/
+.swc/
+
+# Build outputs
+frontend/build/
+frontend/dist/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Turbo
+.turbo/
+
+# Vercel
+.vercel/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# =============================================================================
+# IDE & EDITORS
+# =============================================================================
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+
+# =============================================================================
+# OPERATING SYSTEM
+# =============================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+
+# =============================================================================
+# DOCKER & LOCAL DATA
+# =============================================================================
+# Docker override files (keep docker-compose.yml)
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Local data volumes (if mounted outside Docker volumes)
+data/
+postgres-data/
+redis-data/
+minio-data/
+orthanc-data/
+
+# =============================================================================
+# LOGS & DEBUGGING
+# =============================================================================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =============================================================================
+# DICOM & MEDICAL DATA (Never commit patient data!)
+# =============================================================================
+*.dcm
+*.dicom
+dicom_files/
+studies/
+patient_data/
+
+# =============================================================================
+# UPLOADS & GENERATED FILES
+# =============================================================================
+uploads/
+temp/
+tmp/
+*.tmp
+
+# =============================================================================
+# PROJECT-SPECIFIC
+# =============================================================================
+# Agent planning documents (internal use only)
+/agents/*
+
+# Alembic auto-generated
+backend/alembic/versions/*.pyc
+
+# Local scripts
+scripts/local/
+*.local.sh
