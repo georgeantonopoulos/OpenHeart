@@ -1,0 +1,169 @@
+version: '3.9'
+
+services:
+  # PostgreSQL 16 with pgvector extension
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: openheart-db
+    environment:
+      POSTGRES_DB: openheart
+      POSTGRES_USER: openheart
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-openheart_dev_password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./backend/db/init:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openheart -d openheart"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - openheart-network
+
+  # Redis for sessions, caching, rate limiting
+  redis:
+    image: redis:7-alpine
+    container_name: openheart-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-openheart_redis_dev}
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-openheart_redis_dev}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - openheart-network
+
+  # MinIO for file storage (S3-compatible)
+  minio:
+    image: minio/minio:latest
+    container_name: openheart-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-openheart_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-openheart_minio_dev}
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - openheart-network
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: openheart-api
+    environment:
+      # Database
+      DATABASE_URL: postgresql+asyncpg://openheart:${DB_PASSWORD:-openheart_dev_password}@postgres:5432/openheart
+      DATABASE_URL_SYNC: postgresql://openheart:${DB_PASSWORD:-openheart_dev_password}@postgres:5432/openheart
+
+      # Redis
+      REDIS_URL: redis://:${REDIS_PASSWORD:-openheart_redis_dev}@redis:6379/0
+
+      # Security
+      SECRET_KEY: ${SECRET_KEY:-dev_secret_key_change_in_production_32chars}
+      PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY:-dev_encryption_key_32_chars_here}
+      JWT_EXPIRY_MINUTES: 15
+
+      # DICOM/Orthanc
+      ORTHANC_URL: http://orthanc:8042
+      ORTHANC_USERNAME: admin
+      ORTHANC_PASSWORD: ${ORTHANC_PASSWORD:-orthanc_dev_password}
+
+      # MinIO/S3
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-openheart_minio}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-openheart_minio_dev}
+      S3_BUCKET: openheart-attachments
+
+      # Environment
+      ENVIRONMENT: development
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - openheart-network
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: openheart-web
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_ORTHANC_URL: http://localhost:8042
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - openheart-network
+
+  # Orthanc DICOM Server
+  orthanc:
+    image: orthancteam/orthanc:24.1.0
+    container_name: openheart-orthanc
+    environment:
+      ORTHANC__NAME: "OpenHeart Cyprus PACS"
+      ORTHANC__DICOM_AET: OPENHEART
+      ORTHANC__DICOM_PORT: 4242
+      ORTHANC__REGISTERED_USERS: '{"admin": "${ORTHANC_PASSWORD:-orthanc_dev_password}"}'
+      ORTHANC__AUTHENTICATION_ENABLED: "true"
+      ORTHANC__DICOM_WEB__ENABLE: "true"
+      ORTHANC__DICOM_WEB__ROOT: /dicom-web/
+      ORTHANC__CORS_ENABLED: "true"
+      ORTHANC__CORS_ALLOWED_ORIGINS: '["http://localhost:3000", "http://frontend:3000"]'
+    volumes:
+      - orthanc-data:/var/lib/orthanc/db
+    ports:
+      - "4242:4242"  # DICOM protocol
+      - "8042:8042"  # HTTP API / DICOMweb
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8042/system"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - openheart-network
+
+volumes:
+  postgres-data:
+    name: openheart-postgres-data
+  redis-data:
+    name: openheart-redis-data
+  minio-data:
+    name: openheart-minio-data
+  orthanc-data:
+    name: openheart-orthanc-data
+
+networks:
+  openheart-network:
+    name: openheart-network
+    driver: bridge

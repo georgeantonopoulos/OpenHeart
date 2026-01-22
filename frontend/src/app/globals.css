@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 346 77% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 346 77% 50%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 346 77% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 346 77% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Risk indicator colors */
+.risk-low {
+  @apply bg-green-100 text-green-800 border-green-200;
+}
+
+.risk-moderate {
+  @apply bg-amber-100 text-amber-800 border-amber-200;
+}
+
+.risk-high {
+  @apply bg-red-100 text-red-800 border-red-200;
+}
+
+/* Clinical banner styles */
+.clinical-banner {
+  @apply rounded-lg border p-4 mb-4;
+}
+
+.clinical-banner-low {
+  @apply clinical-banner bg-green-50 border-green-200;
+}
+
+.clinical-banner-moderate {
+  @apply clinical-banner bg-amber-50 border-amber-200;
+}
+
+.clinical-banner-high {
+  @apply clinical-banner bg-red-50 border-red-200 animate-pulse-risk;
+}
+
+/* Note editor styles */
+.note-editor .ProseMirror {
+  @apply min-h-[200px] p-4 focus:outline-none;
+}
+
+.note-editor .ProseMirror p.is-editor-empty:first-child::before {
+  @apply text-muted-foreground pointer-events-none float-left h-0;
+  content: attr(data-placeholder);
+}
+
+/* Version diff highlighting */
+.diff-added {
+  @apply bg-green-100 text-green-900;
+}
+
+.diff-removed {
+  @apply bg-red-100 text-red-900 line-through;
+}
+
+/* DICOM viewer container */
+.dicom-viewer-container {
+  @apply w-full h-[600px] bg-black rounded-lg overflow-hidden;
+}
+
+/* Cyprus date format helper */
+.date-cyprus {
+  font-variant-numeric: tabular-nums;
+}
