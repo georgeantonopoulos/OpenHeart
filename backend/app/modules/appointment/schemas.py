@@ -47,6 +47,7 @@ class AppointmentResponse(BaseModel):
     appointment_id: int
     clinic_id: int
     patient_id: int
+    patient_name: Optional[str] = None
     provider_id: int
     start_time: datetime
     end_time: datetime

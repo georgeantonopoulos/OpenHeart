@@ -1,6 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
+import { useQuery } from '@tanstack/react-query';
+import { getTodayAppointments } from '@/lib/api/appointments';
+import { listPatients } from '@/lib/api/patients';
 
 interface StatItem {
   label: string;
@@ -15,21 +19,56 @@ interface StatItem {
 /**
  * Quick Stats component for dashboard.
  *
- * Displays key metrics for the cardiologist:
- * - Patients today
- * - Pending notes
- * - High-risk alerts
- * - Pending claims
+ * Displays key metrics derived from real API data:
+ * - Appointments today (from appointments API)
+ * - Total patients (from patients API)
+ * - Pending notes (coming soon)
+ * - Pending claims (coming soon)
  */
 export default function QuickStats() {
-  // TODO: Replace with real data from API
+  const { data: session } = useSession();
+
+  const { data: todayAppointments = [] } = useQuery({
+    queryKey: ['today-appointments'],
+    queryFn: () => getTodayAppointments(session!.accessToken!),
+    enabled: !!session?.accessToken,
+    staleTime: 30000,
+  });
+
+  const { data: patientList } = useQuery({
+    queryKey: ['patient-count'],
+    queryFn: () => listPatients(session!.accessToken!, { page: 1, page_size: 1 }),
+    enabled: !!session?.accessToken,
+    staleTime: 60000,
+  });
+
   const stats: StatItem[] = [
     {
-      label: 'Patients Today',
-      value: 8,
-      change: '+2 from yesterday',
+      label: 'Appointments Today',
+      value: todayAppointments.length,
+      change: todayAppointments.length > 0
+        ? `${todayAppointments.filter(a => a.status === 'completed').length} completed`
+        : undefined,
       changeType: 'neutral',
       href: '/appointments',
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+          />
+        </svg>
+      ),
+      color: 'blue',
+    },
+    {
+      label: 'Total Patients',
+      value: patientList?.total ?? '—',
+      change: patientList?.total != null ? 'Active records' : undefined,
+      changeType: 'neutral',
+      href: '/patients',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
@@ -40,14 +79,13 @@ export default function QuickStats() {
           />
         </svg>
       ),
-      color: 'blue',
+      color: 'teal',
     },
     {
       label: 'Pending Notes',
-      value: 3,
-      change: 'Complete before EOD',
-      changeType: 'negative',
-      href: '/patients?filter=pending_notes',
+      value: '—',
+      change: 'Coming soon',
+      changeType: 'neutral',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
@@ -61,29 +99,10 @@ export default function QuickStats() {
       color: 'amber',
     },
     {
-      label: 'High-Risk Alerts',
-      value: 2,
-      change: 'Requires attention',
-      changeType: 'negative',
-      href: '/patients?risk=high',
-      icon: (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-          />
-        </svg>
-      ),
-      color: 'rose',
-    },
-    {
       label: 'Pending Claims',
-      value: 5,
-      change: 'Gesy submissions',
+      value: '—',
+      change: 'Coming soon',
       changeType: 'neutral',
-      href: '/billing/claims?status=pending',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
@@ -94,7 +113,7 @@ export default function QuickStats() {
           />
         </svg>
       ),
-      color: 'teal',
+      color: 'rose',
     },
   ];
 

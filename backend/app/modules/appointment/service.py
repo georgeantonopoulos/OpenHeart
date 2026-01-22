@@ -13,7 +13,9 @@ from typing import Optional
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.encryption import decrypt_pii
 from app.db.session import set_tenant_context
+from app.modules.patient.models import Patient, PatientPII
 from app.modules.appointment.models import (
     Appointment,
     AppointmentStatus,
@@ -115,6 +117,24 @@ class AppointmentService:
         stmt = stmt.order_by(Appointment.start_time)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def resolve_patient_names(self, patient_ids: list[int]) -> dict[int, str]:
+        """Batch-resolve decrypted patient names for a list of patient IDs."""
+        if not patient_ids:
+            return {}
+
+        stmt = (
+            select(Patient.patient_id, PatientPII.first_name_encrypted, PatientPII.last_name_encrypted)
+            .join(PatientPII, Patient.patient_id == PatientPII.patient_id)
+            .where(Patient.patient_id.in_(patient_ids))
+        )
+        result = await self.session.execute(stmt)
+        name_map: dict[int, str] = {}
+        for row in result.all():
+            first = decrypt_pii(row.first_name_encrypted)
+            last = decrypt_pii(row.last_name_encrypted)
+            name_map[row.patient_id] = f"{first} {last}".strip()
+        return name_map
 
     async def update_appointment(
         self, appointment_id: int, data: AppointmentUpdate
