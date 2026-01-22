@@ -3,12 +3,8 @@ const nextConfig = {
   // Enable React strict mode for better development experience
   reactStrictMode: true,
 
-  // Internationalization (Greek/English)
-  i18n: {
-    locales: ['en', 'el'],
-    defaultLocale: 'en',
-    localeDetection: true,
-  },
+  // Note: i18n is handled via App Router route groups, not next.config.js
+  // See: https://nextjs.org/docs/app/building-your-application/routing/internationalization
 
   // Enable standalone output for Docker
   output: 'standalone',

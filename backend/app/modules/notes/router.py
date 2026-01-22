@@ -24,7 +24,7 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.permissions import Permission, require_permissions
+from app.core.permissions import Permission, require_permission
 from app.db.session import get_db
 from app.modules.notes.extraction import extraction_service
 from app.modules.notes.models import NoteAccessAction
@@ -82,7 +82,7 @@ def get_current_user_context(request: Request) -> dict:
     "/",
     response_model=NoteResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permissions(Permission.NOTE_WRITE))],
+    dependencies=[Depends(require_permission(Permission.NOTE_WRITE))],
 )
 async def create_note(
     data: NoteCreate,
@@ -149,7 +149,7 @@ async def create_note(
 @router.get(
     "/patient/{patient_id}",
     response_model=NoteListResponse,
-    dependencies=[Depends(require_permissions(Permission.NOTE_READ))],
+    dependencies=[Depends(require_permission(Permission.NOTE_READ))],
 )
 async def list_patient_notes(
     patient_id: int,
@@ -211,7 +211,7 @@ async def list_patient_notes(
 @router.get(
     "/{note_id}",
     response_model=NoteDetailResponse,
-    dependencies=[Depends(require_permissions(Permission.NOTE_READ))],
+    dependencies=[Depends(require_permission(Permission.NOTE_READ))],
 )
 async def get_note(
     note_id: int,
@@ -318,7 +318,7 @@ async def get_note(
 @router.put(
     "/{note_id}",
     response_model=NoteResponse,
-    dependencies=[Depends(require_permissions(Permission.NOTE_WRITE))],
+    dependencies=[Depends(require_permission(Permission.NOTE_WRITE))],
 )
 async def update_note(
     note_id: int,
@@ -391,7 +391,7 @@ async def update_note(
 @router.post(
     "/{note_id}/lock",
     response_model=NoteResponse,
-    dependencies=[Depends(require_permissions(Permission.NOTE_WRITE))],
+    dependencies=[Depends(require_permission(Permission.NOTE_WRITE))],
 )
 async def lock_note(
     note_id: int,
@@ -439,7 +439,7 @@ async def lock_note(
 @router.get(
     "/{note_id}/versions",
     response_model=list[NoteVersionResponse],
-    dependencies=[Depends(require_permissions(Permission.NOTE_READ))],
+    dependencies=[Depends(require_permission(Permission.NOTE_READ))],
 )
 async def list_versions(
     note_id: int,
@@ -478,7 +478,7 @@ async def list_versions(
 @router.get(
     "/{note_id}/versions/{version_number}",
     response_model=NoteVersionResponse,
-    dependencies=[Depends(require_permissions(Permission.NOTE_READ))],
+    dependencies=[Depends(require_permission(Permission.NOTE_READ))],
 )
 async def get_version(
     note_id: int,
@@ -534,7 +534,7 @@ async def get_version(
 @router.get(
     "/{note_id}/diff/{version_from}/{version_to}",
     response_model=VersionDiffResponse,
-    dependencies=[Depends(require_permissions(Permission.NOTE_READ))],
+    dependencies=[Depends(require_permission(Permission.NOTE_READ))],
 )
 async def compare_versions(
     note_id: int,
@@ -571,7 +571,7 @@ async def compare_versions(
     "/{note_id}/attachments",
     response_model=AttachmentUploadResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permissions(Permission.NOTE_WRITE))],
+    dependencies=[Depends(require_permission(Permission.NOTE_WRITE))],
 )
 async def upload_attachment(
     note_id: int,
@@ -646,7 +646,7 @@ async def upload_attachment(
 @router.get(
     "/{note_id}/attachments/{attachment_id}/download",
     response_model=AttachmentDownloadResponse,
-    dependencies=[Depends(require_permissions(Permission.NOTE_READ))],
+    dependencies=[Depends(require_permission(Permission.NOTE_READ))],
 )
 async def download_attachment(
     note_id: int,
@@ -703,7 +703,7 @@ async def download_attachment(
 @router.delete(
     "/{note_id}/attachments/{attachment_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permissions(Permission.NOTE_WRITE))],
+    dependencies=[Depends(require_permission(Permission.NOTE_WRITE))],
 )
 async def delete_attachment(
     note_id: int,
@@ -739,7 +739,7 @@ async def delete_attachment(
 @router.get(
     "/search",
     response_model=NoteSearchResponse,
-    dependencies=[Depends(require_permissions(Permission.NOTE_READ))],
+    dependencies=[Depends(require_permission(Permission.NOTE_READ))],
 )
 async def search_notes(
     q: str = Query(..., min_length=2, max_length=500),
@@ -809,7 +809,7 @@ async def search_notes(
 @router.get(
     "/{note_id}/access-log",
     response_model=NoteAccessLogResponse,
-    dependencies=[Depends(require_permissions(Permission.AUDIT_READ))],
+    dependencies=[Depends(require_permission(Permission.AUDIT_READ))],
 )
 async def get_access_log(
     note_id: int,

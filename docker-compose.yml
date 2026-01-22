@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   # PostgreSQL 16 with pgvector extension
   postgres:
@@ -111,14 +109,13 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      target: dev  # Use development target for hot-reload
     container_name: openheart-web
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
       NEXT_PUBLIC_ORTHANC_URL: http://localhost:8042
     volumes:
       - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
     ports:
       - "3000:3000"
     depends_on:

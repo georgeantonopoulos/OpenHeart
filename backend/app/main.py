@@ -10,6 +10,7 @@ from typing import AsyncGenerator
 
 import redis.asyncio as redis
 from fastapi import FastAPI, Request
+from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 
@@ -42,7 +43,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Verify database connection
     try:
         async with engine.begin() as conn:
-            await conn.execute("SELECT 1")
+            await conn.execute(text("SELECT 1"))
         logger.info("Database connection verified")
     except Exception as e:
         logger.error(f"Database connection failed: {e}")
@@ -113,7 +114,7 @@ async def health_check(request: Request) -> dict:
     # Database check
     try:
         async with engine.begin() as conn:
-            await conn.execute("SELECT 1")
+            await conn.execute(text("SELECT 1"))
         checks["database"] = True
     except Exception as e:
         checks["database"] = f"Error: {str(e)}"
