@@ -117,7 +117,7 @@ export default function ProfilePage() {
               <div className="flex justify-between">
                 <span className="text-sm text-slate-400">Clinic</span>
                 <span className="text-sm text-white font-medium">
-                  {session.user?.clinic_name || 'N/A'}
+                  {session.user?.clinicName || 'N/A'}
                 </span>
               </div>
             </div>

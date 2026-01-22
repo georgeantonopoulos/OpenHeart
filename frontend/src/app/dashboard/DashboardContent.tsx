@@ -95,6 +95,18 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                   Imaging
                 </Link>
                 <Link
+                  href="/procedures"
+                  className="px-3 py-2 text-sm text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                >
+                  Worklist
+                </Link>
+                <Link
+                  href="/referrals/incoming"
+                  className="px-3 py-2 text-sm text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                >
+                  Referrals
+                </Link>
+                <Link
                   href="/billing/claims"
                   className="px-3 py-2 text-sm text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
                 >

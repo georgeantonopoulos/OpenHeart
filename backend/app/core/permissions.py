@@ -58,6 +58,18 @@ class Permission(str, Enum):
     BILLING_READ = "billing:read"
     BILLING_WRITE = "billing:write"
 
+    # Gesy (GHS) Integration permissions
+    GESY_BENEFICIARY_READ = "gesy:beneficiary:read"
+    GESY_REFERRAL_READ = "gesy:referral:read"
+    GESY_REFERRAL_WRITE = "gesy:referral:write"
+    GESY_CLAIM_READ = "gesy:claim:read"
+    GESY_CLAIM_WRITE = "gesy:claim:write"
+
+    # Appointment permissions
+    APPOINTMENT_READ = "appointment:read"
+    APPOINTMENT_WRITE = "appointment:write"
+    APPOINTMENT_DELETE = "appointment:delete"
+
     # Audit permissions
     AUDIT_READ = "audit:read"
 
@@ -91,6 +103,16 @@ ROLE_PERMISSIONS: dict[str, set[Permission]] = {
         Permission.PRESCRIPTION_WRITE,
         Permission.BILLING_READ,
         Permission.BILLING_WRITE,
+        # Gesy
+        Permission.GESY_BENEFICIARY_READ,
+        Permission.GESY_REFERRAL_READ,
+        Permission.GESY_REFERRAL_WRITE,
+        Permission.GESY_CLAIM_READ,
+        Permission.GESY_CLAIM_WRITE,
+        # Appointments
+        Permission.APPOINTMENT_READ,
+        Permission.APPOINTMENT_WRITE,
+        Permission.APPOINTMENT_DELETE,
     },
     "nurse": {
         # Limited clinical access
@@ -105,6 +127,12 @@ ROLE_PERMISSIONS: dict[str, set[Permission]] = {
         Permission.OBSERVATION_WRITE,
         Permission.CDSS_USE,
         Permission.DICOM_VIEW,
+        # Gesy (read-only)
+        Permission.GESY_BENEFICIARY_READ,
+        Permission.GESY_REFERRAL_READ,
+        # Appointments
+        Permission.APPOINTMENT_READ,
+        Permission.APPOINTMENT_WRITE,
     },
     "receptionist": {
         # Administrative access only
@@ -113,6 +141,12 @@ ROLE_PERMISSIONS: dict[str, set[Permission]] = {
         Permission.ENCOUNTER_READ,
         Permission.NOTE_READ,
         Permission.BILLING_READ,
+        # Gesy (beneficiary verification only)
+        Permission.GESY_BENEFICIARY_READ,
+        # Appointments (primary scheduler)
+        Permission.APPOINTMENT_READ,
+        Permission.APPOINTMENT_WRITE,
+        Permission.APPOINTMENT_DELETE,
     },
     "auditor": {
         # Read-only audit access
@@ -127,6 +161,11 @@ ROLE_PERMISSIONS: dict[str, set[Permission]] = {
         Permission.ENCOUNTER_READ,
         Permission.BILLING_READ,
         Permission.BILLING_WRITE,
+        # Gesy claims
+        Permission.GESY_BENEFICIARY_READ,
+        Permission.GESY_REFERRAL_READ,
+        Permission.GESY_CLAIM_READ,
+        Permission.GESY_CLAIM_WRITE,
     },
 }
 

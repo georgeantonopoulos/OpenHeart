@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
@@ -9,8 +9,9 @@ import {
   getNote,
   updateNote,
   lockNote,
-  NoteUpdateInput,
-  NoteVersion,
+  type NoteDetail,
+  type NoteUpdateInput,
+  type NoteVersion,
   getNoteTypeLabel,
   getNoteTypeColor,
 } from '@/lib/api/notes';
@@ -44,16 +45,18 @@ export default function NoteDetailPage() {
   });
 
   // Fetch note
-  const { data: note, isLoading, error } = useQuery({
+  const { data: note, isLoading, error } = useQuery<NoteDetail>({
     queryKey: ['note', noteId],
     queryFn: () => getNote(session?.accessToken || '', noteId),
     enabled: !!session?.accessToken && !!noteId,
-    onSuccess: (data) => {
-      if (!isEditing && !editContent) {
-        setEditContent(data.content_text || '');
-      }
-    },
   });
+
+  // Initialize edit content when note loads
+  useEffect(() => {
+    if (note && !isEditing && !editContent) {
+      setEditContent(note.content_text || '');
+    }
+  }, [note, isEditing, editContent]);
 
   // Update mutation
   const updateMutation = useMutation({

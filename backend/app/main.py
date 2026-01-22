@@ -189,12 +189,21 @@ from app.integrations.dicom.mwl_router import router as mwl_router
 app.include_router(dicom_router, prefix="/api", tags=["DICOM/Imaging"])
 app.include_router(mwl_router, prefix="/api", tags=["Modality Worklist"])
 
+# Gesy Integration
+from app.integrations.gesy.router import router as gesy_router
+app.include_router(gesy_router, prefix="/api", tags=["Gesy"])
+
+# Medical Coding
+from app.modules.coding.router import router as coding_router
+app.include_router(coding_router, prefix="/api", tags=["Medical Coding"])
+
+# Appointments
+from app.modules.appointment.router import router as appointment_router
+app.include_router(appointment_router, prefix="/api", tags=["Appointments"])
+
 # Routers to be implemented:
 # from app.integrations.fhir.router import router as fhir_router
-# from app.integrations.gesy.router import router as gesy_router
-
 # app.include_router(fhir_router, prefix="/fhir/r4", tags=["FHIR"])
-# app.include_router(gesy_router, prefix="/api/gesy", tags=["Gesy"])
 
 
 if __name__ == "__main__":

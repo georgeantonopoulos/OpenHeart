@@ -21,7 +21,7 @@ export default function InviteUserPage() {
     first_name: '',
     last_name: '',
     role: 'nurse',
-    clinic_id: session?.user?.clinic_id || 1,
+    clinic_id: session?.user?.clinicId || 1,
     title: '',
     specialty: '',
     license_number: '',
