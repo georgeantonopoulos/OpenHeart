@@ -13,14 +13,24 @@ Final treatment decisions must be made by qualified healthcare professionals.
 
 from datetime import datetime, timezone
 
+import math
+
 from app.modules.cardiology.cdss.models import (
     CHA2DS2VAScInput,
     CHA2DS2VAScResult,
+    EuroSCOREIIInput,
+    EuroSCOREIIResult,
     GRACEInput,
     GRACEResult,
     HASBLEDInput,
     HASBLEDResult,
     KillipClass,
+    LVFunction,
+    OperationUrgency,
+    OperationWeight,
+    PREVENTInput,
+    PREVENTResult,
+    PulmonaryHypertension,
 )
 
 
@@ -428,5 +438,418 @@ def calculate_hasbled(input_data: HASBLEDInput) -> HASBLEDResult:
         recommendation=recommendation,
         modifiable_factors=modifiable_factors,
         score_breakdown=breakdown,
+        calculation_timestamp=datetime.now(timezone.utc),
+    )
+
+
+# =============================================================================
+# PREVENT Equations Calculator (AHA 2023)
+# =============================================================================
+
+# PREVENT equation coefficients (simplified model)
+# Based on: Khan SS, et al. Circulation. 2024;149:e347-e913
+# These are approximate coefficients for the base model
+
+
+def calculate_prevent(input_data: PREVENTInput) -> PREVENTResult:
+    """
+    Calculate PREVENT Equations for ASCVD and Heart Failure risk.
+
+    The PREVENT (Predicting Risk of CVD Events) equations (AHA 2023)
+    are race-free 10-year and 30-year risk calculators that include
+    kidney function (eGFR) and predict both ASCVD and Heart Failure.
+
+    Valid for ages 30-79.
+
+    Args:
+        input_data: PREVENT input parameters
+
+    Returns:
+        PREVENTResult with ASCVD risk, HF risk, and recommendations
+    """
+    risk_enhancers: list[str] = []
+
+    # -------------------------------------------------------------------------
+    # ASCVD 10-Year Risk Calculation (Simplified PREVENT model)
+    # -------------------------------------------------------------------------
+
+    # Base coefficients (sex-specific)
+    if input_data.sex == "male":
+        # Male coefficients
+        age_coef = 0.064
+        sbp_coef = 0.017
+        bp_treat_coef = 0.421
+        tc_coef = 0.002
+        hdl_coef = -0.012
+        diabetes_coef = 0.661
+        smoker_coef = 0.701
+        egfr_coef = -0.015  # Lower eGFR = higher risk
+        baseline_survival = 0.9665
+    else:
+        # Female coefficients
+        age_coef = 0.079
+        sbp_coef = 0.019
+        bp_treat_coef = 0.387
+        tc_coef = 0.003
+        hdl_coef = -0.015
+        diabetes_coef = 0.879
+        smoker_coef = 0.847
+        egfr_coef = -0.013
+        baseline_survival = 0.9830
+
+    # Calculate linear predictor (log-hazard)
+    ln_hazard = (
+        (input_data.age - 55) * age_coef
+        + (input_data.systolic_bp - 120) * sbp_coef
+        + (1 if input_data.on_bp_treatment else 0) * bp_treat_coef
+        + (input_data.total_cholesterol - 170) * tc_coef
+        + (input_data.hdl_cholesterol - 45) * hdl_coef
+        + (1 if input_data.diabetes else 0) * diabetes_coef
+        + (1 if input_data.current_smoker else 0) * smoker_coef
+        + (90 - input_data.egfr) * egfr_coef  # Note: centered at 90
+    )
+
+    # Convert to 10-year risk
+    ten_year_ascvd = (1 - math.pow(baseline_survival, math.exp(ln_hazard))) * 100
+
+    # Clamp to valid range
+    ten_year_ascvd = max(0.1, min(99.9, ten_year_ascvd))
+
+    # -------------------------------------------------------------------------
+    # Heart Failure 10-Year Risk (Simplified model)
+    # -------------------------------------------------------------------------
+    # HF prediction in PREVENT emphasizes: age, BMI, diabetes, eGFR, BP
+
+    if input_data.sex == "male":
+        hf_baseline = 0.9750
+        hf_age_coef = 0.058
+        hf_sbp_coef = 0.012
+        hf_diabetes_coef = 0.850
+        hf_egfr_coef = -0.022
+    else:
+        hf_baseline = 0.9870
+        hf_age_coef = 0.062
+        hf_sbp_coef = 0.014
+        hf_diabetes_coef = 0.920
+        hf_egfr_coef = -0.020
+
+    hf_ln_hazard = (
+        (input_data.age - 55) * hf_age_coef
+        + (input_data.systolic_bp - 120) * hf_sbp_coef
+        + (1 if input_data.diabetes else 0) * hf_diabetes_coef
+        + (90 - input_data.egfr) * hf_egfr_coef
+    )
+
+    ten_year_hf = (1 - math.pow(hf_baseline, math.exp(hf_ln_hazard))) * 100
+    ten_year_hf = max(0.1, min(99.9, ten_year_hf))
+
+    # Total CVD risk (not simply additive due to overlap, use max approximation)
+    ten_year_total = min(99.9, ten_year_ascvd + ten_year_hf * 0.7)
+
+    # -------------------------------------------------------------------------
+    # Risk Category and Recommendations
+    # -------------------------------------------------------------------------
+
+    # Identify risk enhancers
+    if input_data.egfr < 60:
+        risk_enhancers.append("Reduced kidney function (eGFR <60)")
+    if input_data.uacr and input_data.uacr >= 30:
+        risk_enhancers.append("Albuminuria (UACR ≥30 mg/g)")
+    if input_data.hba1c and input_data.hba1c >= 8.0:
+        risk_enhancers.append("Suboptimal glycemic control (HbA1c ≥8%)")
+    if input_data.current_smoker:
+        risk_enhancers.append("Current smoking")
+    if input_data.total_cholesterol / input_data.hdl_cholesterol > 5:
+        risk_enhancers.append("Elevated total/HDL cholesterol ratio")
+
+    # Risk category thresholds
+    if ten_year_ascvd < 5:
+        risk_category = "Low"
+    elif ten_year_ascvd < 7.5:
+        risk_category = "Borderline"
+    elif ten_year_ascvd < 20:
+        risk_category = "Intermediate"
+    else:
+        risk_category = "High"
+
+    # Statin benefit determination
+    statin_benefit = (
+        ten_year_ascvd >= 7.5
+        or input_data.diabetes
+        or (ten_year_ascvd >= 5 and len(risk_enhancers) > 0)
+    )
+
+    # Generate recommendations
+    recommendations: list[str] = []
+
+    if risk_category == "Low":
+        recommendations.append(
+            "Low 10-year ASCVD risk. Emphasize lifestyle modifications."
+        )
+    elif risk_category == "Borderline":
+        recommendations.append(
+            "Borderline risk. Consider risk-enhancing factors in statin discussion."
+        )
+    elif risk_category == "Intermediate":
+        recommendations.append(
+            "Intermediate risk. Statin therapy is reasonable; "
+            "consider coronary artery calcium (CAC) score if decision uncertain."
+        )
+    else:
+        recommendations.append(
+            "High 10-year risk. High-intensity statin therapy recommended."
+        )
+
+    # Heart failure specific recommendations
+    if ten_year_hf >= 10:
+        recommendations.append(
+            f"Elevated heart failure risk ({ten_year_hf:.1f}%). "
+            "Optimize BP control, consider SGLT2 inhibitor if diabetic."
+        )
+
+    # Kidney function recommendations
+    if input_data.egfr < 60:
+        recommendations.append(
+            "CKD present - consider cardio-renal protective strategies (SGLT2i, ACEi/ARB)."
+        )
+
+    # Smoking cessation
+    if input_data.current_smoker:
+        recommendations.append(
+            "Smoking cessation is the single most effective intervention."
+        )
+
+    return PREVENTResult(
+        ten_year_ascvd_risk=round(ten_year_ascvd, 1),
+        ten_year_hf_risk=round(ten_year_hf, 1),
+        ten_year_total_cvd_risk=round(ten_year_total, 1),
+        risk_category=risk_category,
+        statin_benefit_group=statin_benefit,
+        recommendation=" ".join(recommendations),
+        risk_enhancers=risk_enhancers,
+        calculation_timestamp=datetime.now(timezone.utc),
+    )
+
+
+# =============================================================================
+# EuroSCORE II Calculator
+# =============================================================================
+
+# EuroSCORE II coefficients from:
+# Nashef SA, et al. Eur J Cardiothorac Surg. 2012;41:734-44
+
+
+def calculate_euroscore_ii(input_data: EuroSCOREIIInput) -> EuroSCOREIIResult:
+    """
+    Calculate EuroSCORE II for cardiac surgery mortality prediction.
+
+    EuroSCORE II (European System for Cardiac Operative Risk Evaluation)
+    estimates 30-day mortality risk for adult cardiac surgery.
+    Critical for Heart Team discussions on revascularization strategy.
+
+    Validated thresholds for TAVI vs SAVR, PCI vs CABG decisions.
+
+    Args:
+        input_data: EuroSCORE II input parameters
+
+    Returns:
+        EuroSCOREIIResult with predicted mortality and recommendations
+    """
+    risk_factors: list[str] = []
+
+    # Constant (intercept)
+    beta_0 = -5.324537
+
+    # Initialize sum of coefficients
+    beta_sum = beta_0
+
+    # -------------------------------------------------------------------------
+    # Patient-Related Factors
+    # -------------------------------------------------------------------------
+
+    # Age (continuous, per year after age 60)
+    if input_data.age > 60:
+        age_contribution = 0.0285181 * (input_data.age - 60)
+        beta_sum += age_contribution
+        if input_data.age >= 75:
+            risk_factors.append(f"Advanced age ({input_data.age} years)")
+
+    # Female sex
+    if input_data.sex == "female":
+        beta_sum += 0.2196434
+        risk_factors.append("Female sex")
+
+    # Renal impairment (creatinine clearance)
+    if input_data.on_dialysis:
+        beta_sum += 0.6421508
+        risk_factors.append("Dialysis-dependent renal failure")
+    elif input_data.creatinine_clearance < 50:
+        # CrCl categories: 50-85, <50
+        if input_data.creatinine_clearance < 50:
+            beta_sum += 0.303553
+            risk_factors.append(f"Moderate renal impairment (CrCl {input_data.creatinine_clearance:.0f})")
+
+    # Extracardiac arteriopathy
+    if input_data.extracardiac_arteriopathy:
+        beta_sum += 0.5360268
+        risk_factors.append("Extracardiac arteriopathy")
+
+    # Poor mobility
+    if input_data.poor_mobility:
+        beta_sum += 0.2407181
+        risk_factors.append("Poor mobility")
+
+    # Previous cardiac surgery
+    if input_data.previous_cardiac_surgery:
+        beta_sum += 1.118599
+        risk_factors.append("Previous cardiac surgery (redo)")
+
+    # Chronic lung disease
+    if input_data.chronic_lung_disease:
+        beta_sum += 0.1886564
+        risk_factors.append("Chronic lung disease")
+
+    # Active endocarditis
+    if input_data.active_endocarditis:
+        beta_sum += 0.6194522
+        risk_factors.append("Active endocarditis")
+
+    # Critical preoperative state
+    if input_data.critical_preoperative_state:
+        beta_sum += 1.086517
+        risk_factors.append("Critical preoperative state")
+
+    # Diabetes on insulin
+    if input_data.diabetes_on_insulin:
+        beta_sum += 0.3542749
+        risk_factors.append("Insulin-dependent diabetes")
+
+    # -------------------------------------------------------------------------
+    # Cardiac-Related Factors
+    # -------------------------------------------------------------------------
+
+    # NYHA class (III-IV)
+    if input_data.nyha_class >= 3:
+        beta_sum += 0.1070545 * (input_data.nyha_class - 2)  # Incremental for III/IV
+        risk_factors.append(f"NYHA Class {input_data.nyha_class}")
+
+    # CCS Class 4 angina
+    if input_data.ccs_class_4_angina:
+        beta_sum += 0.2226147
+        risk_factors.append("CCS Class 4 angina (rest angina)")
+
+    # LV function
+    lv_coefficients = {
+        LVFunction.GOOD: 0,
+        LVFunction.MODERATE: 0.3150652,
+        LVFunction.POOR: 0.8084096,
+        LVFunction.VERY_POOR: 0.9346919,
+    }
+    lv_coef = lv_coefficients[input_data.lv_function]
+    if lv_coef > 0:
+        beta_sum += lv_coef
+        risk_factors.append(f"Reduced LV function ({input_data.lv_function.value})")
+
+    # Recent MI
+    if input_data.recent_mi:
+        beta_sum += 0.1528943
+        risk_factors.append("Recent MI (≤90 days)")
+
+    # Pulmonary hypertension
+    ph_coefficients = {
+        PulmonaryHypertension.NO: 0,
+        PulmonaryHypertension.MODERATE: 0.1788899,
+        PulmonaryHypertension.SEVERE: 0.3491475,
+    }
+    ph_coef = ph_coefficients[input_data.pulmonary_hypertension]
+    if ph_coef > 0:
+        beta_sum += ph_coef
+        risk_factors.append(f"Pulmonary hypertension ({input_data.pulmonary_hypertension.value})")
+
+    # -------------------------------------------------------------------------
+    # Operation-Related Factors
+    # -------------------------------------------------------------------------
+
+    # Urgency
+    urgency_coefficients = {
+        OperationUrgency.ELECTIVE: 0,
+        OperationUrgency.URGENT: 0.3174673,
+        OperationUrgency.EMERGENCY: 0.7039121,
+        OperationUrgency.SALVAGE: 1.362947,
+    }
+    urgency_coef = urgency_coefficients[input_data.urgency]
+    if urgency_coef > 0:
+        beta_sum += urgency_coef
+        risk_factors.append(f"Non-elective surgery ({input_data.urgency.value})")
+
+    # Weight of procedure
+    weight_coefficients = {
+        OperationWeight.ISOLATED_CABG: 0,
+        OperationWeight.SINGLE_NON_CABG: 0.0062118,
+        OperationWeight.TWO_PROCEDURES: 0.5521478,
+        OperationWeight.THREE_OR_MORE: 0.9724533,
+    }
+    weight_coef = weight_coefficients[input_data.operation_weight]
+    if weight_coef > 0:
+        beta_sum += weight_coef
+        risk_factors.append(f"Complex procedure ({input_data.operation_weight.value})")
+
+    # Surgery on thoracic aorta
+    if input_data.surgery_on_thoracic_aorta:
+        beta_sum += 0.6527205
+        risk_factors.append("Thoracic aortic surgery")
+
+    # -------------------------------------------------------------------------
+    # Calculate Predicted Mortality
+    # -------------------------------------------------------------------------
+
+    # Logistic regression: P = e^x / (1 + e^x)
+    predicted_mortality = (math.exp(beta_sum) / (1 + math.exp(beta_sum))) * 100
+
+    # Clamp to valid range
+    predicted_mortality = max(0.1, min(99.9, predicted_mortality))
+
+    # -------------------------------------------------------------------------
+    # Risk Category and Recommendations
+    # -------------------------------------------------------------------------
+
+    if predicted_mortality < 2:
+        risk_category = "Low"
+        suitability = "Good surgical candidate"
+        recommendation = (
+            "Low operative risk. Standard surgical approach is appropriate. "
+            "Surgery is generally recommended if anatomically suitable."
+        )
+    elif predicted_mortality < 5:
+        risk_category = "Intermediate"
+        suitability = "Acceptable surgical candidate with some risk factors"
+        recommendation = (
+            "Intermediate risk. Surgery remains a reasonable option. "
+            "Heart Team discussion recommended to weigh surgical benefits vs risks. "
+            "Consider less invasive alternatives if available (e.g., TAVI for aortic stenosis)."
+        )
+    elif predicted_mortality < 10:
+        risk_category = "High"
+        suitability = "High-risk surgical candidate"
+        recommendation = (
+            "High operative risk. Careful Heart Team evaluation essential. "
+            "Consider transcatheter options (TAVI, MitraClip) where applicable. "
+            "If surgery is chosen, preoperative optimization is critical."
+        )
+    else:
+        risk_category = "Very High"
+        suitability = "Prohibitive surgical risk - consider alternatives"
+        recommendation = (
+            "Prohibitive surgical risk. Surgery should generally be avoided. "
+            "Strong consideration for transcatheter interventions or medical management. "
+            "If surgery is the only option, detailed informed consent and ethics consultation advised."
+        )
+
+    return EuroSCOREIIResult(
+        predicted_mortality=round(predicted_mortality, 2),
+        risk_category=risk_category,
+        suitability_for_surgery=suitability,
+        recommendation=recommendation,
+        risk_factors_present=risk_factors,
         calculation_timestamp=datetime.now(timezone.utc),
     )

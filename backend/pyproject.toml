@@ -43,7 +43,8 @@ dependencies = [
 
     # Security
     "python-jose[cryptography]>=3.3.0",
-    "passlib[bcrypt]>=1.7.4",
+    "passlib[bcrypt,argon2]>=1.7.4",
+    "argon2-cffi>=23.1.0",
     "cryptography>=42.0.0",
     "pyotp>=2.9.0",
 

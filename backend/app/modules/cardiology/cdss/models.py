@@ -254,3 +254,285 @@ class HASBLEDResult(BaseModel):
         default_factory=datetime.utcnow,
         description="Timestamp of calculation",
     )
+
+
+# =============================================================================
+# PREVENT Equations Models (AHA 2023)
+# =============================================================================
+
+
+class PREVENTInput(BaseModel):
+    """
+    Input parameters for PREVENT Equations calculation.
+
+    AHA PREVENT (2023) - Race-agnostic ASCVD and Heart Failure risk prediction.
+    Replaces Pooled Cohort Equations (PCE) as the modern standard.
+    """
+
+    age: int = Field(
+        ...,
+        ge=30,
+        le=79,
+        description="Patient age in years (valid: 30-79)",
+        json_schema_extra={"example": 55},
+    )
+    sex: Literal["male", "female"] = Field(
+        ...,
+        description="Biological sex",
+        json_schema_extra={"example": "male"},
+    )
+    systolic_bp: int = Field(
+        ...,
+        ge=80,
+        le=250,
+        description="Systolic blood pressure in mmHg",
+        json_schema_extra={"example": 130},
+    )
+    total_cholesterol: float = Field(
+        ...,
+        ge=100,
+        le=400,
+        description="Total cholesterol in mg/dL",
+        json_schema_extra={"example": 200},
+    )
+    hdl_cholesterol: float = Field(
+        ...,
+        ge=20,
+        le=150,
+        description="HDL cholesterol in mg/dL",
+        json_schema_extra={"example": 50},
+    )
+    egfr: float = Field(
+        ...,
+        ge=5,
+        le=200,
+        description="Estimated GFR in mL/min/1.73m² (required for PREVENT)",
+        json_schema_extra={"example": 90},
+    )
+    diabetes: bool = Field(
+        default=False,
+        description="History of diabetes mellitus",
+    )
+    current_smoker: bool = Field(
+        default=False,
+        description="Current cigarette smoker",
+    )
+    on_bp_treatment: bool = Field(
+        default=False,
+        description="Currently on antihypertensive medication",
+    )
+    on_statin: bool = Field(
+        default=False,
+        description="Currently on statin therapy",
+    )
+    # Optional enhanced inputs
+    hba1c: float | None = Field(
+        default=None,
+        ge=4.0,
+        le=20.0,
+        description="HbA1c in % (optional, for enhanced model)",
+    )
+    uacr: float | None = Field(
+        default=None,
+        ge=0,
+        le=10000,
+        description="Urine albumin-to-creatinine ratio in mg/g (optional)",
+    )
+
+
+class PREVENTResult(BaseModel):
+    """
+    PREVENT Equations calculation result.
+
+    Includes 10-year and 30-year ASCVD risk, plus Heart Failure risk.
+    """
+
+    ten_year_ascvd_risk: float = Field(
+        ..., ge=0, le=100, description="10-year ASCVD risk (%)"
+    )
+    ten_year_hf_risk: float = Field(
+        ..., ge=0, le=100, description="10-year Heart Failure risk (%)"
+    )
+    ten_year_total_cvd_risk: float = Field(
+        ..., ge=0, le=100, description="10-year total CVD risk (ASCVD + HF)"
+    )
+    risk_category: Literal["Low", "Borderline", "Intermediate", "High"] = Field(
+        ..., description="ASCVD risk category"
+    )
+    statin_benefit_group: bool = Field(
+        ..., description="Patient likely to benefit from statin therapy"
+    )
+    recommendation: str = Field(..., description="Clinical recommendations")
+    risk_enhancers: list[str] = Field(
+        default_factory=list,
+        description="Present risk-enhancing factors",
+    )
+    calculation_timestamp: datetime = Field(
+        default_factory=datetime.utcnow,
+        description="Timestamp of calculation",
+    )
+
+
+# =============================================================================
+# EuroSCORE II Models
+# =============================================================================
+
+
+class LVFunction(str, Enum):
+    """Left ventricular function categories for EuroSCORE II."""
+
+    GOOD = "good"  # LVEF >50%
+    MODERATE = "moderate"  # LVEF 31-50%
+    POOR = "poor"  # LVEF 21-30%
+    VERY_POOR = "very_poor"  # LVEF ≤20%
+
+
+class PulmonaryHypertension(str, Enum):
+    """Pulmonary hypertension severity for EuroSCORE II."""
+
+    NO = "no"  # <31 mmHg
+    MODERATE = "moderate"  # 31-55 mmHg
+    SEVERE = "severe"  # >55 mmHg
+
+
+class OperationUrgency(str, Enum):
+    """Urgency classification for cardiac surgery."""
+
+    ELECTIVE = "elective"  # Routine admission
+    URGENT = "urgent"  # Not elective, within current admission
+    EMERGENCY = "emergency"  # Before next working day
+    SALVAGE = "salvage"  # CPR ongoing or ECMO/IABP pre-OR
+
+
+class OperationWeight(str, Enum):
+    """Type/weight of cardiac procedure."""
+
+    ISOLATED_CABG = "isolated_cabg"
+    SINGLE_NON_CABG = "single_non_cabg"  # Single valve, ASD closure, etc.
+    TWO_PROCEDURES = "two_procedures"  # CABG + valve, two valves
+    THREE_OR_MORE = "three_or_more"  # Triple valve, CABG + 2 valves
+
+
+class EuroSCOREIIInput(BaseModel):
+    """
+    Input parameters for EuroSCORE II calculation.
+
+    Estimates operative mortality risk for cardiac surgery.
+    Essential for Heart Team discussions (CABG vs PCI, SAVR vs TAVI).
+    """
+
+    # Patient factors
+    age: int = Field(
+        ...,
+        ge=18,
+        le=100,
+        description="Patient age in years",
+        json_schema_extra={"example": 70},
+    )
+    sex: Literal["male", "female"] = Field(
+        ...,
+        description="Biological sex",
+        json_schema_extra={"example": "male"},
+    )
+    # Renal function
+    creatinine_clearance: float = Field(
+        ...,
+        ge=0,
+        le=200,
+        description="Creatinine clearance (Cockcroft-Gault) in mL/min",
+        json_schema_extra={"example": 85},
+    )
+    on_dialysis: bool = Field(
+        default=False,
+        description="Patient on chronic dialysis",
+    )
+    # Comorbidities
+    extracardiac_arteriopathy: bool = Field(
+        default=False,
+        description="Claudication, carotid stenosis >50%, amputation, or prior aortic surgery",
+    )
+    poor_mobility: bool = Field(
+        default=False,
+        description="Severe impairment from musculoskeletal/neurological dysfunction",
+    )
+    previous_cardiac_surgery: bool = Field(
+        default=False,
+        description="Prior cardiac surgery requiring pericardium opening",
+    )
+    chronic_lung_disease: bool = Field(
+        default=False,
+        description="Long-term bronchodilator or steroid use for lung disease",
+    )
+    active_endocarditis: bool = Field(
+        default=False,
+        description="Patient still on antibiotic treatment for endocarditis at surgery",
+    )
+    critical_preoperative_state: bool = Field(
+        default=False,
+        description="VT/VF, cardiac massage, ventilation, inotropes, IABP, or anuria pre-op",
+    )
+    diabetes_on_insulin: bool = Field(
+        default=False,
+        description="Diabetes requiring insulin therapy",
+    )
+    # Cardiac factors
+    nyha_class: Literal[1, 2, 3, 4] = Field(
+        default=1,
+        description="NYHA functional class (1-4)",
+    )
+    ccs_class_4_angina: bool = Field(
+        default=False,
+        description="CCS Class 4 angina (angina at rest)",
+    )
+    lv_function: LVFunction = Field(
+        default=LVFunction.GOOD,
+        description="Left ventricular function",
+    )
+    recent_mi: bool = Field(
+        default=False,
+        description="MI within 90 days before surgery",
+    )
+    pulmonary_hypertension: PulmonaryHypertension = Field(
+        default=PulmonaryHypertension.NO,
+        description="Pulmonary hypertension severity (PA systolic pressure)",
+    )
+    # Operation factors
+    urgency: OperationUrgency = Field(
+        default=OperationUrgency.ELECTIVE,
+        description="Urgency of operation",
+    )
+    operation_weight: OperationWeight = Field(
+        default=OperationWeight.ISOLATED_CABG,
+        description="Type/weight of procedure",
+    )
+    surgery_on_thoracic_aorta: bool = Field(
+        default=False,
+        description="Surgery on thoracic aorta",
+    )
+
+
+class EuroSCOREIIResult(BaseModel):
+    """
+    EuroSCORE II calculation result.
+
+    Provides operative mortality risk for Heart Team decision-making.
+    """
+
+    predicted_mortality: float = Field(
+        ..., ge=0, le=100, description="Predicted operative mortality (%)"
+    )
+    risk_category: Literal["Low", "Intermediate", "High", "Very High"] = Field(
+        ..., description="Risk category for surgical decision-making"
+    )
+    suitability_for_surgery: str = Field(
+        ..., description="General guidance on surgical candidacy"
+    )
+    recommendation: str = Field(..., description="Heart Team consideration points")
+    risk_factors_present: list[str] = Field(
+        default_factory=list,
+        description="List of risk factors contributing to score",
+    )
+    calculation_timestamp: datetime = Field(
+        default_factory=datetime.utcnow,
+        description="Timestamp of calculation",
+    )

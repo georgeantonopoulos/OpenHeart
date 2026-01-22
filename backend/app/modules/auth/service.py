@@ -18,7 +18,7 @@ from app.config import settings
 from app.core.security import (
     create_access_token,
     create_refresh_token,
-    verify_password,
+    verify_password_with_rehash,
 )
 from app.modules.clinic.models import Clinic, User, UserClinicRole
 
@@ -33,6 +33,28 @@ class AuthEvent(str, Enum):
     ACCOUNT_LOCKOUT = "ACCOUNT_LOCKOUT"
     TOKEN_REFRESH = "TOKEN_REFRESH"
     LOGOUT = "LOGOUT"
+
+    # MFA events
+    MFA_SETUP_INITIATED = "MFA_SETUP_INITIATED"
+    MFA_SETUP_FAILED = "MFA_SETUP_FAILED"
+    MFA_ENABLED = "MFA_ENABLED"
+    MFA_VERIFIED = "MFA_VERIFIED"
+    MFA_FAILED = "MFA_FAILED"
+    MFA_BACKUP_USED = "MFA_BACKUP_USED"
+    MFA_BACKUP_REGENERATED = "MFA_BACKUP_REGENERATED"
+    MFA_DISABLED = "MFA_DISABLED"
+    MFA_DISABLE_FAILED = "MFA_DISABLE_FAILED"
+
+    # Invitation events
+    INVITATION_CREATED = "INVITATION_CREATED"
+    INVITATION_ACCEPTED = "INVITATION_ACCEPTED"
+    INVITATION_REVOKED = "INVITATION_REVOKED"
+
+    # Password events
+    PASSWORD_RESET_REQUESTED = "PASSWORD_RESET_REQUESTED"
+    PASSWORD_RESET_COMPLETED = "PASSWORD_RESET_COMPLETED"
+    PASSWORD_CHANGED = "PASSWORD_CHANGED"
+    PASSWORD_HASH_UPGRADED = "PASSWORD_HASH_UPGRADED"
 
 
 # Lockout policy configuration
@@ -172,8 +194,10 @@ class AuthService:
             )
             return None
 
-        # Verify password
-        if not verify_password(password, user.password_hash):
+        # Verify password with automatic hash upgrade (bcrypt → Argon2id)
+        is_valid, new_hash = verify_password_with_rehash(password, user.password_hash)
+
+        if not is_valid:
             # Increment failed attempts
             user.failed_login_attempts += 1
 
@@ -210,6 +234,21 @@ class AuthService:
         user.failed_login_attempts = 0
         user.locked_until = None
         user.last_login_at = datetime.now(timezone.utc)
+
+        # Upgrade password hash if needed (bcrypt → Argon2id)
+        if new_hash:
+            user.password_hash = new_hash
+            logger.info(f"Password hash upgraded to Argon2id for user {user.user_id}")
+            # Log the hash upgrade event (no password details logged)
+            await log_auth_event(
+                event=AuthEvent.PASSWORD_HASH_UPGRADED,
+                email=email,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                user_id=user.user_id,
+                details="bcrypt → Argon2id",
+            )
+
         await self.db.commit()
 
         # Re-query user with relationships after commit

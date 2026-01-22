@@ -173,24 +173,28 @@ async def root() -> dict:
 from app.modules.auth.router import router as auth_router
 from app.modules.cardiology.cdss.router import router as cdss_router
 from app.modules.notes.router import router as notes_router
+from app.modules.patient.router import router as patient_router
+from app.modules.encounter.router import router as encounter_router
 
 # Include implemented routers
 app.include_router(auth_router, prefix="/api", tags=["Authentication"])
 app.include_router(cdss_router, prefix="/api/cdss", tags=["CDSS"])
 app.include_router(notes_router, prefix="/api", tags=["Clinical Notes"])
+app.include_router(patient_router, prefix="/api", tags=["Patients"])
+app.include_router(encounter_router, prefix="/api", tags=["Encounters"])
+
+# DICOM Integration
+from app.integrations.dicom.router import router as dicom_router
+from app.integrations.dicom.mwl_router import router as mwl_router
+app.include_router(dicom_router, prefix="/api", tags=["DICOM/Imaging"])
+app.include_router(mwl_router, prefix="/api", tags=["Modality Worklist"])
 
 # Routers to be implemented:
-# from app.modules.patient.router import router as patient_router
-# from app.modules.encounter.router import router as encounter_router
 # from app.integrations.fhir.router import router as fhir_router
 # from app.integrations.gesy.router import router as gesy_router
-# from app.integrations.dicom.router import router as dicom_router
 
-# app.include_router(patient_router, prefix="/api/patients", tags=["Patients"])
-# app.include_router(encounter_router, prefix="/api/encounters", tags=["Encounters"])
 # app.include_router(fhir_router, prefix="/fhir/r4", tags=["FHIR"])
 # app.include_router(gesy_router, prefix="/api/gesy", tags=["Gesy"])
-# app.include_router(dicom_router, prefix="/api/dicom", tags=["DICOM"])
 
 
 if __name__ == "__main__":

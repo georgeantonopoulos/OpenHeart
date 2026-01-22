@@ -14,16 +14,22 @@ from app.core.permissions import Permission, require_permission
 from app.core.security import TokenPayload
 from app.modules.cardiology.cdss.calculators import (
     calculate_cha2ds2vasc,
+    calculate_euroscore_ii,
     calculate_grace_score,
     calculate_hasbled,
+    calculate_prevent,
 )
 from app.modules.cardiology.cdss.models import (
     CHA2DS2VAScInput,
     CHA2DS2VAScResult,
+    EuroSCOREIIInput,
+    EuroSCOREIIResult,
     GRACEInput,
     GRACEResult,
     HASBLEDInput,
     HASBLEDResult,
+    PREVENTInput,
+    PREVENTResult,
 )
 
 router = APIRouter(prefix="/cdss", tags=["CDSS"])
@@ -152,6 +158,104 @@ async def compute_hasbled_score(
     # Log calculation for audit
     await log_cdss_calculation(
         calculation_type="HAS-BLED",
+        patient_id=patient_id,
+        input_params=input_data.model_dump(),
+        result=result.model_dump(),
+        user_id=user.sub,
+        clinic_id=user.clinic_id,
+    )
+
+    return result
+
+
+@router.post(
+    "/prevent",
+    response_model=PREVENTResult,
+    summary="Calculate PREVENT Risk Score",
+    description="""
+    Calculate the PREVENT Equations (AHA 2023) for ASCVD and Heart Failure risk.
+
+    **Modern Standard:**
+    - Race-agnostic (replaces Pooled Cohort Equations)
+    - Includes eGFR (kidney function) as required input
+    - Predicts both ASCVD and Heart Failure risk
+
+    **Risk Categories (10-year ASCVD):**
+    - **Low (<5%):** Lifestyle modifications
+    - **Borderline (5-7.5%):** Consider risk enhancers
+    - **Intermediate (7.5-20%):** Statin reasonable, consider CAC score
+    - **High (≥20%):** High-intensity statin recommended
+
+    Valid for ages 30-79 years.
+    """,
+)
+async def compute_prevent_score(
+    input_data: PREVENTInput,
+    patient_id: Annotated[
+        Optional[int],
+        Query(description="Optional patient ID to link calculation"),
+    ] = None,
+    user: TokenPayload = Depends(require_permission(Permission.CDSS_USE)),
+) -> PREVENTResult:
+    """
+    Calculate PREVENT Equations for ASCVD and Heart Failure risk.
+
+    Returns 10-year ASCVD risk, HF risk, and statin recommendations.
+    """
+    result = calculate_prevent(input_data)
+
+    # Log calculation for audit
+    await log_cdss_calculation(
+        calculation_type="PREVENT",
+        patient_id=patient_id,
+        input_params=input_data.model_dump(),
+        result=result.model_dump(),
+        user_id=user.sub,
+        clinic_id=user.clinic_id,
+    )
+
+    return result
+
+
+@router.post(
+    "/euroscore",
+    response_model=EuroSCOREIIResult,
+    summary="Calculate EuroSCORE II",
+    description="""
+    Calculate EuroSCORE II for cardiac surgery mortality prediction.
+
+    **Critical for Heart Team Decisions:**
+    - CABG vs PCI revascularization strategy
+    - SAVR vs TAVI for aortic stenosis
+    - Surgical repair vs transcatheter intervention
+
+    **Risk Thresholds:**
+    - **Low (<2%):** Good surgical candidate
+    - **Intermediate (2-5%):** Heart Team discussion
+    - **High (5-10%):** Consider alternatives (TAVI, etc.)
+    - **Very High (>10%):** Prohibitive surgical risk
+
+    Uses logistic regression based on 22,381 patients from 154 centers.
+    """,
+)
+async def compute_euroscore_ii(
+    input_data: EuroSCOREIIInput,
+    patient_id: Annotated[
+        Optional[int],
+        Query(description="Optional patient ID to link calculation"),
+    ] = None,
+    user: TokenPayload = Depends(require_permission(Permission.CDSS_USE)),
+) -> EuroSCOREIIResult:
+    """
+    Calculate EuroSCORE II for cardiac surgery risk.
+
+    Returns predicted mortality and Heart Team recommendations.
+    """
+    result = calculate_euroscore_ii(input_data)
+
+    # Log calculation for audit
+    await log_cdss_calculation(
+        calculation_type="EuroSCORE-II",
         patient_id=patient_id,
         input_params=input_data.model_dump(),
         result=result.model_dump(),

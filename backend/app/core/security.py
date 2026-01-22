@@ -3,22 +3,44 @@ Authentication and Authorization for OpenHeart Cyprus.
 
 Provides JWT token management, password hashing, and MFA (TOTP) support.
 All clinical accounts require MFA per GDPR/Cyprus Law 125(I)/2018.
+
+Password hashing uses Argon2id (OWASP recommended) with automatic
+rehashing of legacy bcrypt hashes on successful login.
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Annotated
+from typing import Annotated, Tuple
 
-import bcrypt
 import pyotp
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
+from passlib.context import CryptContext
 from pydantic import BaseModel
 
 from app.config import settings
 
 # HTTP Bearer token security scheme
 security = HTTPBearer()
+
+# =============================================================================
+# Password Hashing Configuration (Argon2id - OWASP recommended)
+# =============================================================================
+
+# Argon2id with OWASP recommended parameters
+# Memory: 65536 KB (64 MB), Iterations: 3, Parallelism: 4
+argon2_hasher = PasswordHasher(
+    time_cost=3,        # iterations
+    memory_cost=65536,  # 64 MB
+    parallelism=4,      # parallel threads
+    hash_len=32,        # output hash length
+    salt_len=16,        # salt length
+)
+
+# Legacy bcrypt context for rehashing old passwords
+legacy_bcrypt = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 # =============================================================================
@@ -49,13 +71,13 @@ class TokenResponse(BaseModel):
 
 
 # =============================================================================
-# Password Functions
+# Password Functions (Argon2id with bcrypt fallback)
 # =============================================================================
 
 
 def hash_password(password: str) -> str:
     """
-    Hash a password using bcrypt.
+    Hash a password using Argon2id (OWASP recommended).
 
     Args:
         password: Plain text password
@@ -63,16 +85,14 @@ def hash_password(password: str) -> str:
     Returns:
         Hashed password string
     """
-    # Encode password to bytes and hash with bcrypt
-    password_bytes = password.encode("utf-8")
-    salt = bcrypt.gensalt()
-    hashed = bcrypt.hashpw(password_bytes, salt)
-    return hashed.decode("utf-8")
+    return argon2_hasher.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Verify a password against its hash.
+
+    Supports both Argon2id (preferred) and legacy bcrypt hashes.
 
     Args:
         plain_password: Plain text password to verify
@@ -81,9 +101,69 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         True if password matches, False otherwise
     """
-    password_bytes = plain_password.encode("utf-8")
-    hashed_bytes = hashed_password.encode("utf-8")
-    return bcrypt.checkpw(password_bytes, hashed_bytes)
+    is_valid, _ = verify_password_with_rehash(plain_password, hashed_password)
+    return is_valid
+
+
+def verify_password_with_rehash(
+    plain_password: str,
+    hashed_password: str,
+) -> Tuple[bool, str | None]:
+    """
+    Verify password and return new hash if rehashing is needed.
+
+    Automatically detects and verifies:
+    - Argon2id hashes (preferred)
+    - Legacy bcrypt hashes (migrated from older system)
+
+    If a legacy bcrypt hash is detected and verification succeeds,
+    returns a new Argon2id hash for the caller to update.
+
+    Args:
+        plain_password: Plain text password to verify
+        hashed_password: Stored password hash
+
+    Returns:
+        Tuple of (is_valid, new_hash_if_rehash_needed)
+        - (True, None) - Argon2id verified, no rehash needed
+        - (True, new_hash) - bcrypt verified, should update to new_hash
+        - (False, None) - Verification failed
+    """
+    # Check if this is an Argon2 hash (starts with $argon2)
+    if hashed_password.startswith("$argon2"):
+        try:
+            argon2_hasher.verify(hashed_password, plain_password)
+
+            # Check if hash needs update (parameters changed)
+            if argon2_hasher.check_needs_rehash(hashed_password):
+                return True, argon2_hasher.hash(plain_password)
+
+            return True, None
+        except VerifyMismatchError:
+            return False, None
+        except InvalidHashError:
+            return False, None
+
+    # Check if this is a bcrypt hash (starts with $2b$, $2a$, or $2y$)
+    if hashed_password.startswith(("$2b$", "$2a$", "$2y$")):
+        if legacy_bcrypt.verify(plain_password, hashed_password):
+            # Password verified, return new Argon2id hash for upgrade
+            new_hash = argon2_hasher.hash(plain_password)
+            return True, new_hash
+        return False, None
+
+    # Unknown hash format
+    return False, None
+
+
+def is_argon2_hash(hashed_password: str) -> bool:
+    """Check if password hash is using Argon2."""
+    return hashed_password.startswith("$argon2")
+
+
+def is_bcrypt_hash(hashed_password: str) -> bool:
+    """Check if password hash is using bcrypt (legacy)."""
+    return hashed_password.startswith(("$2b$", "$2a$", "$2y$"))
 
 
 # =============================================================================
