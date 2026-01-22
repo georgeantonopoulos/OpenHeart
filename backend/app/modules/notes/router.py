@@ -25,6 +25,7 @@ from fastapi import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import Permission, require_permission
+from app.core.security import TokenPayload
 from app.db.session import get_db
 from app.modules.notes.extraction import extraction_service
 from app.modules.notes.models import NoteAccessAction
@@ -57,20 +58,6 @@ async def get_note_service(db: AsyncSession = Depends(get_db)) -> NoteService:
     return NoteService(db)
 
 
-def get_current_user_context(request: Request) -> dict:
-    """
-    Extract current user context from request.
-
-    In production, this would come from JWT token validation.
-    """
-    # Placeholder - would extract from request.state.user
-    return {
-        "user_id": getattr(request.state, "user_id", 1),
-        "user_email": getattr(request.state, "user_email", "doctor@openheart.cy"),
-        "user_role": getattr(request.state, "user_role", "cardiologist"),
-        "clinic_id": getattr(request.state, "clinic_id", 1),
-        "session_id": getattr(request.state, "session_id", None),
-    }
 
 
 # ============================================================================
@@ -82,11 +69,11 @@ def get_current_user_context(request: Request) -> dict:
     "/",
     response_model=NoteResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission(Permission.NOTE_WRITE))],
 )
 async def create_note(
     data: NoteCreate,
     request: Request,
+    user: Annotated[TokenPayload, Depends(require_permission(Permission.NOTE_WRITE))],
     service: NoteService = Depends(get_note_service),
 ) -> NoteResponse:
     """
@@ -96,12 +83,11 @@ async def create_note(
     the patient and optionally an encounter.
     """
     start_time = time.time()
-    user_ctx = get_current_user_context(request)
 
     note = await service.create_note(
         data=data,
-        user_id=user_ctx["user_id"],
-        clinic_id=user_ctx["clinic_id"],
+        user_id=user.sub,
+        clinic_id=user.clinic_id,
     )
 
     # Log access
@@ -109,20 +95,19 @@ async def create_note(
     await service.log_access(
         note_id=note.note_id,
         action=NoteAccessAction.CREATE,
-        user_id=user_ctx["user_id"],
-        user_email=user_ctx["user_email"],
-        user_role=user_ctx["user_role"],
-        clinic_id=user_ctx["clinic_id"],
+        user_id=user.sub,
+        user_email=user.email,
+        user_role=user.role,
+        clinic_id=user.clinic_id,
         ip_address=request.client.host if request.client else "unknown",
         request_path=str(request.url.path),
         request_method=request.method,
         response_status=201,
         duration_ms=duration_ms,
-        session_id=user_ctx.get("session_id"),
     )
 
     # Get current version content
-    versions = await service.get_all_versions(note.note_id, user_ctx["clinic_id"])
+    versions = await service.get_all_versions(note.note_id, user.clinic_id)
     current_version = versions[0] if versions else None
 
     return NoteResponse(
@@ -149,11 +134,10 @@ async def create_note(
 @router.get(
     "/patient/{patient_id}",
     response_model=NoteListResponse,
-    dependencies=[Depends(require_permission(Permission.NOTE_READ))],
 )
 async def list_patient_notes(
     patient_id: int,
-    request: Request,
+    user: Annotated[TokenPayload, Depends(require_permission(Permission.NOTE_READ))],
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     note_type: Optional[str] = Query(None),
@@ -164,11 +148,9 @@ async def list_patient_notes(
 
     Returns paginated notes with basic metadata. Use GET /notes/{id} for full details.
     """
-    user_ctx = get_current_user_context(request)
-
     notes, total = await service.get_patient_notes(
         patient_id=patient_id,
-        clinic_id=user_ctx["clinic_id"],
+        clinic_id=user.clinic_id,
         page=page,
         page_size=page_size,
         note_type=note_type,
@@ -211,11 +193,11 @@ async def list_patient_notes(
 @router.get(
     "/{note_id}",
     response_model=NoteDetailResponse,
-    dependencies=[Depends(require_permission(Permission.NOTE_READ))],
 )
 async def get_note(
     note_id: int,
     request: Request,
+    user: Annotated[TokenPayload, Depends(require_permission(Permission.NOTE_READ))],
     service: NoteService = Depends(get_note_service),
 ) -> NoteDetailResponse:
     """
@@ -225,11 +207,10 @@ async def get_note(
     Access is logged for GDPR compliance.
     """
     start_time = time.time()
-    user_ctx = get_current_user_context(request)
 
     note = await service.get_note(
         note_id=note_id,
-        clinic_id=user_ctx["clinic_id"],
+        clinic_id=user.clinic_id,
         include_versions=True,
         include_attachments=True,
     )
@@ -245,17 +226,16 @@ async def get_note(
     await service.log_access(
         note_id=note_id,
         action=NoteAccessAction.VIEW,
-        user_id=user_ctx["user_id"],
-        user_email=user_ctx["user_email"],
-        user_role=user_ctx["user_role"],
-        clinic_id=user_ctx["clinic_id"],
+        user_id=user.sub,
+        user_email=user.email,
+        user_role=user.role,
+        clinic_id=user.clinic_id,
         ip_address=request.client.host if request.client else "unknown",
         request_path=str(request.url.path),
         request_method=request.method,
         response_status=200,
         duration_ms=duration_ms,
         version_accessed=note.current_version,
-        session_id=user_ctx.get("session_id"),
     )
 
     current_version = note.versions[0] if note.versions else None
@@ -318,12 +298,12 @@ async def get_note(
 @router.put(
     "/{note_id}",
     response_model=NoteResponse,
-    dependencies=[Depends(require_permission(Permission.NOTE_WRITE))],
 )
 async def update_note(
     note_id: int,
     data: NoteUpdate,
     request: Request,
+    user: Annotated[TokenPayload, Depends(require_permission(Permission.NOTE_WRITE))],
     service: NoteService = Depends(get_note_service),
 ) -> NoteResponse:
     """
@@ -333,14 +313,13 @@ async def update_note(
     is preserved for audit purposes.
     """
     start_time = time.time()
-    user_ctx = get_current_user_context(request)
 
     try:
         note = await service.update_note(
             note_id=note_id,
             data=data,
-            user_id=user_ctx["user_id"],
-            clinic_id=user_ctx["clinic_id"],
+            user_id=user.sub,
+            clinic_id=user.clinic_id,
         )
     except ValueError as e:
         raise HTTPException(
@@ -359,17 +338,16 @@ async def update_note(
     await service.log_access(
         note_id=note_id,
         action=NoteAccessAction.EDIT,
-        user_id=user_ctx["user_id"],
-        user_email=user_ctx["user_email"],
-        user_role=user_ctx["user_role"],
-        clinic_id=user_ctx["clinic_id"],
+        user_id=user.sub,
+        user_email=user.email,
+        user_role=user.role,
+        clinic_id=user.clinic_id,
         ip_address=request.client.host if request.client else "unknown",
         request_path=str(request.url.path),
         request_method=request.method,
         response_status=200,
         duration_ms=duration_ms,
         version_accessed=note.current_version,
-        session_id=user_ctx.get("session_id"),
     )
 
     return NoteResponse(
@@ -391,21 +369,18 @@ async def update_note(
 @router.post(
     "/{note_id}/lock",
     response_model=NoteResponse,
-    dependencies=[Depends(require_permission(Permission.NOTE_WRITE))],
 )
 async def lock_note(
     note_id: int,
+    user: Annotated[TokenPayload, Depends(require_permission(Permission.NOTE_WRITE))],
     reason: str = Query(..., min_length=3, max_length=255),
-    request: Request = None,
     service: NoteService = Depends(get_note_service),
 ) -> NoteResponse:
     """Lock a note to prevent further edits."""
-    user_ctx = get_current_user_context(request)
-
     note = await service.lock_note(
         note_id=note_id,
-        user_id=user_ctx["user_id"],
-        clinic_id=user_ctx["clinic_id"],
+        user_id=user.sub,
+        clinic_id=user.clinic_id,
         reason=reason,
     )
 
@@ -439,17 +414,14 @@ async def lock_note(
 @router.get(
     "/{note_id}/versions",
     response_model=list[NoteVersionResponse],
-    dependencies=[Depends(require_permission(Permission.NOTE_READ))],
 )
 async def list_versions(
     note_id: int,
-    request: Request,
+    user: Annotated[TokenPayload, Depends(require_permission(Permission.NOTE_READ))],
     service: NoteService = Depends(get_note_service),
 ) -> list[NoteVersionResponse]:
     """Get all versions of a note."""
-    user_ctx = get_current_user_context(request)
-
-    versions = await service.get_all_versions(note_id, user_ctx["clinic_id"])
+    versions = await service.get_all_versions(note_id, user.clinic_id)
 
     if not versions:
         raise HTTPException(
@@ -478,19 +450,18 @@ async def list_versions(
 @router.get(
     "/{note_id}/versions/{version_number}",
     response_model=NoteVersionResponse,
-    dependencies=[Depends(require_permission(Permission.NOTE_READ))],
 )
 async def get_version(
     note_id: int,
     version_number: int,
     request: Request,
+    user: Annotated[TokenPayload, Depends(require_permission(Permission.NOTE_READ))],
     service: NoteService = Depends(get_note_service),
 ) -> NoteVersionResponse:
     """Get a specific version of a note."""
     start_time = time.time()
-    user_ctx = get_current_user_context(request)
 
-    version = await service.get_version(note_id, version_number, user_ctx["clinic_id"])
+    version = await service.get_version(note_id, version_number, user.clinic_id)
 
     if not version:
         raise HTTPException(
@@ -503,17 +474,16 @@ async def get_version(
     await service.log_access(
         note_id=note_id,
         action=NoteAccessAction.VIEW,
-        user_id=user_ctx["user_id"],
-        user_email=user_ctx["user_email"],
-        user_role=user_ctx["user_role"],
-        clinic_id=user_ctx["clinic_id"],
+        user_id=user.sub,
+        user_email=user.email,
+        user_role=user.role,
+        clinic_id=user.clinic_id,
         ip_address=request.client.host if request.client else "unknown",
         request_path=str(request.url.path),
         request_method=request.method,
         response_status=200,
         duration_ms=duration_ms,
         version_accessed=version_number,
-        session_id=user_ctx.get("session_id"),
     )
 
     return NoteVersionResponse(
@@ -534,23 +504,20 @@ async def get_version(
 @router.get(
     "/{note_id}/diff/{version_from}/{version_to}",
     response_model=VersionDiffResponse,
-    dependencies=[Depends(require_permission(Permission.NOTE_READ))],
 )
 async def compare_versions(
     note_id: int,
     version_from: int,
     version_to: int,
-    request: Request,
+    user: Annotated[TokenPayload, Depends(require_permission(Permission.NOTE_READ))],
     service: NoteService = Depends(get_note_service),
 ) -> VersionDiffResponse:
     """Compare two versions of a note."""
-    user_ctx = get_current_user_context(request)
-
     diff = await service.compare_versions(
         note_id=note_id,
         version_from=version_from,
         version_to=version_to,
-        clinic_id=user_ctx["clinic_id"],
+        clinic_id=user.clinic_id,
     )
 
     if not diff:
@@ -571,12 +538,11 @@ async def compare_versions(
     "/{note_id}/attachments",
     response_model=AttachmentUploadResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission(Permission.NOTE_WRITE))],
 )
 async def upload_attachment(
     note_id: int,
+    user: Annotated[TokenPayload, Depends(require_permission(Permission.NOTE_WRITE))],
     file: UploadFile = File(...),
-    request: Request = None,
     service: NoteService = Depends(get_note_service),
 ) -> AttachmentUploadResponse:
     """
@@ -585,7 +551,6 @@ async def upload_attachment(
     Supports PDF, DOCX, images (JPG, PNG), and text files.
     Text is automatically extracted for search indexing.
     """
-    user_ctx = get_current_user_context(request)
 
     # Validate file
     if not file.filename:
@@ -619,8 +584,8 @@ async def upload_attachment(
             file_content=content,
             original_filename=file.filename,
             mime_type=mime_type,
-            user_id=user_ctx["user_id"],
-            clinic_id=user_ctx["clinic_id"],
+            user_id=user.sub,
+            clinic_id=user.clinic_id,
         )
     except ValueError as e:
         raise HTTPException(
@@ -646,12 +611,12 @@ async def upload_attachment(
 @router.get(
     "/{note_id}/attachments/{attachment_id}/download",
     response_model=AttachmentDownloadResponse,
-    dependencies=[Depends(require_permission(Permission.NOTE_READ))],
 )
 async def download_attachment(
     note_id: int,
     attachment_id: int,
     request: Request,
+    user: Annotated[TokenPayload, Depends(require_permission(Permission.NOTE_READ))],
     service: NoteService = Depends(get_note_service),
 ) -> AttachmentDownloadResponse:
     """
@@ -660,9 +625,8 @@ async def download_attachment(
     Downloads are logged for GDPR compliance.
     """
     start_time = time.time()
-    user_ctx = get_current_user_context(request)
 
-    attachment = await service.get_attachment(attachment_id, user_ctx["clinic_id"])
+    attachment = await service.get_attachment(attachment_id, user.clinic_id)
 
     if not attachment or attachment.note_id != note_id:
         raise HTTPException(
@@ -675,17 +639,16 @@ async def download_attachment(
     await service.log_access(
         note_id=note_id,
         action=NoteAccessAction.DOWNLOAD_ATTACHMENT,
-        user_id=user_ctx["user_id"],
-        user_email=user_ctx["user_email"],
-        user_role=user_ctx["user_role"],
-        clinic_id=user_ctx["clinic_id"],
+        user_id=user.sub,
+        user_email=user.email,
+        user_role=user.role,
+        clinic_id=user.clinic_id,
         ip_address=request.client.host if request.client else "unknown",
         request_path=str(request.url.path),
         request_method=request.method,
         response_status=200,
         duration_ms=duration_ms,
         attachment_id=attachment_id,
-        session_id=user_ctx.get("session_id"),
     )
 
     # In production, generate presigned S3/MinIO URL
@@ -703,12 +666,11 @@ async def download_attachment(
 @router.delete(
     "/{note_id}/attachments/{attachment_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission(Permission.NOTE_WRITE))],
 )
 async def delete_attachment(
     note_id: int,
     attachment_id: int,
-    request: Request,
+    user: Annotated[TokenPayload, Depends(require_permission(Permission.NOTE_WRITE))],
     service: NoteService = Depends(get_note_service),
 ) -> None:
     """
@@ -716,12 +678,10 @@ async def delete_attachment(
 
     The attachment is marked as deleted but retained for compliance.
     """
-    user_ctx = get_current_user_context(request)
-
     success = await service.delete_attachment(
         attachment_id=attachment_id,
-        user_id=user_ctx["user_id"],
-        clinic_id=user_ctx["clinic_id"],
+        user_id=user.sub,
+        clinic_id=user.clinic_id,
     )
 
     if not success:
@@ -739,16 +699,16 @@ async def delete_attachment(
 @router.get(
     "/search",
     response_model=NoteSearchResponse,
-    dependencies=[Depends(require_permission(Permission.NOTE_READ))],
 )
 async def search_notes(
+    request: Request,
+    user: Annotated[TokenPayload, Depends(require_permission(Permission.NOTE_READ))],
     q: str = Query(..., min_length=2, max_length=500),
     patient_id: Optional[int] = Query(None),
     note_type: Optional[str] = Query(None),
     author_id: Optional[int] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    request: Request = None,
     service: NoteService = Depends(get_note_service),
 ) -> NoteSearchResponse:
     """
@@ -758,7 +718,6 @@ async def search_notes(
     Results are ranked by relevance.
     """
     start_time = time.time()
-    user_ctx = get_current_user_context(request)
 
     query = NoteSearchQuery(
         q=q,
@@ -769,7 +728,7 @@ async def search_notes(
 
     results, total, search_time_ms = await service.search_notes(
         query=query,
-        clinic_id=user_ctx["clinic_id"],
+        clinic_id=user.clinic_id,
         page=page,
         page_size=page_size,
     )
@@ -778,17 +737,16 @@ async def search_notes(
     await service.log_access(
         note_id=0,  # No specific note for search
         action=NoteAccessAction.SEARCH,
-        user_id=user_ctx["user_id"],
-        user_email=user_ctx["user_email"],
-        user_role=user_ctx["user_role"],
-        clinic_id=user_ctx["clinic_id"],
+        user_id=user.sub,
+        user_email=user.email,
+        user_role=user.role,
+        clinic_id=user.clinic_id,
         ip_address=request.client.host if request.client else "unknown",
         request_path=str(request.url.path),
         request_method=request.method,
         response_status=200,
         duration_ms=int((time.time() - start_time) * 1000),
         search_query=q,
-        session_id=user_ctx.get("session_id"),
     )
 
     return NoteSearchResponse(
@@ -809,13 +767,12 @@ async def search_notes(
 @router.get(
     "/{note_id}/access-log",
     response_model=NoteAccessLogResponse,
-    dependencies=[Depends(require_permission(Permission.AUDIT_READ))],
 )
 async def get_access_log(
     note_id: int,
+    user: Annotated[TokenPayload, Depends(require_permission(Permission.AUDIT_READ))],
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    request: Request = None,
     service: NoteService = Depends(get_note_service),
 ) -> NoteAccessLogResponse:
     """
@@ -824,11 +781,9 @@ async def get_access_log(
     Requires AUDIT_READ permission. Returns all access events
     for GDPR compliance auditing.
     """
-    user_ctx = get_current_user_context(request)
-
     entries, total = await service.get_access_log(
         note_id=note_id,
-        clinic_id=user_ctx["clinic_id"],
+        clinic_id=user.clinic_id,
         page=page,
         page_size=page_size,
     )

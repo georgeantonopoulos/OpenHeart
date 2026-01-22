@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -30,6 +31,7 @@ type ViewMode = "grid" | "list";
 export default function PatientImagingPage() {
   const params = useParams();
   const router = useRouter();
+  const { data: session } = useSession();
   const patientId = Number(params.id);
 
   const [studies, setStudies] = useState<DicomStudy[]>([]);
@@ -42,17 +44,19 @@ export default function PatientImagingPage() {
   const [total, setTotal] = useState(0);
   const perPage = 12;
 
+  const accessToken = session?.accessToken || '';
+
   useEffect(() => {
-    loadStudies();
-  }, [patientId, page, modalityFilter]);
+    if (accessToken) {
+      loadStudies();
+    }
+  }, [patientId, page, modalityFilter, accessToken]);
 
   async function loadStudies() {
     try {
       setLoading(true);
       setError(null);
 
-      // In production, this would use the patient's DICOM Patient ID
-      // For now, we search by linked_patient_id
       const params = {
         linked_patient_id: patientId,
         page,
@@ -60,7 +64,7 @@ export default function PatientImagingPage() {
         ...(modalityFilter !== "all" && { modality: modalityFilter }),
       };
 
-      const result = await searchStudies(params);
+      const result = await searchStudies(accessToken, params);
       setStudies(result.studies);
       setTotal(result.total);
     } catch (err) {
@@ -74,8 +78,7 @@ export default function PatientImagingPage() {
 
   async function handleOpenViewer(study: DicomStudy) {
     try {
-      const { viewer_url } = await getViewerUrl(study.study_instance_uid);
-      // Open in new tab for full-screen viewer experience
+      const { viewer_url } = await getViewerUrl(accessToken, study.study_instance_uid);
       window.open(viewer_url, "_blank", "noopener,noreferrer");
     } catch (err) {
       console.error("Failed to get viewer URL:", err);

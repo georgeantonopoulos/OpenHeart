@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
   X,
   Maximize2,
@@ -17,9 +18,11 @@ import { getViewerUrl, type DicomStudy, getStudy } from "@/lib/api/imaging";
 function ViewerContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { data: session } = useSession();
 
   const studyUid = searchParams.get("study");
   const returnUrl = searchParams.get("return");
+  const accessToken = session?.accessToken || '';
 
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [study, setStudy] = useState<DicomStudy | null>(null);
@@ -29,23 +32,22 @@ function ViewerContent() {
   const [showSidebar, setShowSidebar] = useState(true);
 
   useEffect(() => {
-    if (studyUid) {
+    if (studyUid && accessToken) {
       loadViewer(studyUid);
-    } else {
+    } else if (!studyUid) {
       setError("No study specified");
       setLoading(false);
     }
-  }, [studyUid]);
+  }, [studyUid, accessToken]);
 
   async function loadViewer(uid: string) {
     try {
       setLoading(true);
       setError(null);
 
-      // Get viewer URL and study details in parallel
       const [urlResponse, studyData] = await Promise.all([
-        getViewerUrl(uid),
-        getStudy(uid).catch(() => null), // Study details are optional
+        getViewerUrl(accessToken, uid),
+        getStudy(accessToken, uid).catch(() => null),
       ]);
 
       setViewerUrl(urlResponse.viewer_url);

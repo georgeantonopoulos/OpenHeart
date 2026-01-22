@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, require_permission
 from app.core.permissions import Permission
+from app.core.security import TokenPayload
 from app.db.session import get_db
 from app.modules.encounter.schemas import (
     EncounterComplete,
@@ -39,13 +40,13 @@ router = APIRouter(prefix="/encounters", tags=["Encounters"])
 
 def get_encounter_service(
     session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: TokenPayload = Depends(get_current_user),
 ) -> EncounterService:
     """Get encounter service with current user context."""
     return EncounterService(
         session=session,
-        clinic_id=current_user["clinic_id"],
-        user_id=current_user["user_id"],
+        clinic_id=current_user.clinic_id,
+        user_id=current_user.sub,
     )
 
 
