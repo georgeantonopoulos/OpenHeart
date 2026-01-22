@@ -170,10 +170,12 @@ async def root() -> dict:
 # =============================================================================
 
 # Import implemented routers
+from app.modules.auth.router import router as auth_router
 from app.modules.cardiology.cdss.router import router as cdss_router
 from app.modules.notes.router import router as notes_router
 
 # Include implemented routers
+app.include_router(auth_router, prefix="/api", tags=["Authentication"])
 app.include_router(cdss_router, prefix="/api/cdss", tags=["CDSS"])
 app.include_router(notes_router, prefix="/api", tags=["Clinical Notes"])
 

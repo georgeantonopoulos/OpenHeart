@@ -26,7 +26,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
-    from typing import List
+    pass  # Type hints handled via string annotations
 
 
 class Role(str, Enum):
@@ -103,10 +103,11 @@ class Clinic(Base):
     )
 
     # Relationships
-    users: Mapped["List[UserClinicRole]"] = relationship(
+    users: Mapped[list["UserClinicRole"]] = relationship(
         "UserClinicRole",
         back_populates="clinic",
         cascade="all, delete-orphan",
+        uselist=True,
     )
 
     __table_args__ = (
@@ -201,10 +202,11 @@ class User(Base):
     )
 
     # Relationships
-    clinic_roles: Mapped["List[UserClinicRole]"] = relationship(
+    clinic_roles: Mapped[list["UserClinicRole"]] = relationship(
         "UserClinicRole",
         back_populates="user",
         cascade="all, delete-orphan",
+        uselist=True,
     )
 
     __table_args__ = (
