@@ -143,6 +143,15 @@ def upgrade() -> None:
     op.create_index("idx_hio_code", "hio_service_codes", ["code"])
     op.create_index("idx_hio_specialty", "hio_service_codes", ["specialty_code"])
     op.create_index("idx_hio_type", "hio_service_codes", ["service_type"])
+    
+    # Create immutable wrapper for unaccent to use in indexes
+    op.execute("""
+        CREATE OR REPLACE FUNCTION public.immutable_unaccent(text)
+          RETURNS text AS
+        $func$
+        SELECT public.unaccent($1)
+        $func$ LANGUAGE sql IMMUTABLE;
+    """)
 
     # =========================================================================
     # Gesy Medications (HIO Product Registry)
@@ -174,25 +183,25 @@ def upgrade() -> None:
     op.execute("""
         CREATE INDEX idx_icd10_description_fts
         ON icd10_codes
-        USING GIN (to_tsvector('simple', unaccent(description_en) || ' ' || coalesce(unaccent(description_el), '')))
+        USING GIN (to_tsvector('simple', immutable_unaccent(description_en) || ' ' || coalesce(immutable_unaccent(description_el), '')))
     """)
 
     op.execute("""
         CREATE INDEX idx_cpt_description_fts
         ON cpt_codes
-        USING GIN (to_tsvector('simple', unaccent(description)))
+        USING GIN (to_tsvector('simple', immutable_unaccent(description)))
     """)
 
     op.execute("""
         CREATE INDEX idx_hio_description_fts
         ON hio_service_codes
-        USING GIN (to_tsvector('simple', unaccent(description_en) || ' ' || coalesce(unaccent(description_el), '')))
+        USING GIN (to_tsvector('simple', immutable_unaccent(description_en) || ' ' || coalesce(immutable_unaccent(description_el), '')))
     """)
 
     op.execute("""
         CREATE INDEX idx_gesy_med_name_fts
         ON gesy_medications
-        USING GIN (to_tsvector('simple', unaccent(brand_name) || ' ' || coalesce(unaccent(generic_name), '')))
+        USING GIN (to_tsvector('simple', immutable_unaccent(brand_name) || ' ' || coalesce(immutable_unaccent(generic_name), '')))
     """)
 
 
