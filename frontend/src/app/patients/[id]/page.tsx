@@ -60,7 +60,7 @@ export default function PatientProfilePage() {
         <div className="text-center">
           <h2 className="text-xl font-semibold text-white mb-2">Patient Not Found</h2>
           <p className="text-slate-400 mb-4">
-            The patient you're looking for doesn't exist or you don't have access.
+            The patient you&apos;re looking for doesn&apos;t exist or you don&apos;t have access.
           </p>
           <Link
             href="/patients"
@@ -139,6 +139,25 @@ export default function PatientProfilePage() {
                   />
                 </svg>
                 CDSS
+              </Link>
+              <Link
+                href={`/appointments/new?patientId=${patientId}`}
+                className="inline-flex items-center px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                <svg
+                  className="w-4 h-4 mr-1.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  />
+                </svg>
+                Book Appt
               </Link>
               <Link
                 href={`/patients/${patientId}/imaging`}

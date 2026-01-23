@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   Calendar,
@@ -15,11 +15,13 @@ import {
 } from 'lucide-react';
 import {
   createAppointment,
+  checkConflicts,
   EXPECTED_DURATIONS,
   type AppointmentType,
   type AppointmentCreateInput,
+  type ConflictInfo,
 } from '@/lib/api/appointments';
-import { searchPatients, type Patient } from '@/lib/api/patients';
+import { searchPatients, getPatient, type Patient } from '@/lib/api/patients';
 
 const APPOINTMENT_TYPES: { value: AppointmentType; label: string }[] = [
   { value: 'consultation', label: 'Consultation' },
@@ -35,6 +37,7 @@ const APPOINTMENT_TYPES: { value: AppointmentType; label: string }[] = [
 function NewAppointmentContent() {
   const { data: session } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
@@ -59,6 +62,26 @@ function NewAppointmentContent() {
   const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
   const [referralId, setReferralId] = useState('');
+  const [conflicts, setConflicts] = useState<ConflictInfo[]>([]);
+  const [checkingConflicts, setCheckingConflicts] = useState(false);
+
+  // Handle pre-selected patient from query params
+  useEffect(() => {
+    const pId = searchParams.get('patientId');
+    if (pId && session?.accessToken && !selectedPatient) {
+      const fetchPreselectedPatient = async () => {
+        try {
+          const patient = await getPatient(session.accessToken, parseInt(pId, 10));
+          setSelectedPatient(patient);
+          setPatientId(String(patient.patient_id));
+          setStep(2); // Automatically go to date/time selection
+        } catch (err) {
+          console.error('Failed to fetch pre-selected patient:', err);
+        }
+      };
+      fetchPreselectedPatient();
+    }
+  }, [searchParams, session?.accessToken, selectedPatient]);
 
   // Duration warning
   const expectedDuration = EXPECTED_DURATIONS[appointmentType] || 30;
@@ -98,6 +121,36 @@ function NewAppointmentContent() {
       }
     };
   }, [patientSearch, session?.accessToken]);
+
+  // Conflict detection
+  useEffect(() => {
+    if (!session?.accessToken || !date || !time || !session.user.id) {
+      setConflicts([]);
+      return;
+    }
+
+    const check = async () => {
+      try {
+        setCheckingConflicts(true);
+        const start = new Date(`${date}T${time}:00`).toISOString();
+        const end = new Date(new Date(`${date}T${time}:00`).getTime() + duration * 60000).toISOString();
+        const results = await checkConflicts(
+          session.accessToken,
+          parseInt(session.user.id, 10),
+          start,
+          end
+        );
+        setConflicts(results);
+      } catch (err) {
+        console.error('Conflict check failed:', err);
+      } finally {
+        setCheckingConflicts(false);
+      }
+    };
+
+    const timeout = setTimeout(check, 500);
+    return () => clearTimeout(timeout);
+  }, [date, time, duration, session?.accessToken, session?.user.id]);
 
   function selectPatient(patient: Patient) {
     setSelectedPatient(patient);
@@ -186,13 +239,12 @@ function NewAppointmentContent() {
           {[1, 2, 3].map((s) => (
             <div key={s} className="flex items-center gap-2">
               <div
-                className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                  step === s
-                    ? 'bg-teal-600 text-white'
-                    : step > s
-                      ? 'bg-teal-600/30 text-teal-400'
-                      : 'bg-slate-800 text-slate-500'
-                }`}
+                className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium ${step === s
+                  ? 'bg-teal-600 text-white'
+                  : step > s
+                    ? 'bg-teal-600/30 text-teal-400'
+                    : 'bg-slate-800 text-slate-500'
+                  }`}
               >
                 {step > s ? <CheckCircle className="h-4 w-4" /> : s}
               </div>
@@ -224,11 +276,10 @@ function NewAppointmentContent() {
                   <button
                     key={type.value}
                     onClick={() => handleTypeChange(type.value)}
-                    className={`rounded-lg border p-3 text-left transition-colors ${
-                      appointmentType === type.value
-                        ? 'border-teal-500 bg-teal-500/10 text-white'
-                        : 'border-white/10 bg-white/5 text-slate-300 hover:border-white/20'
-                    }`}
+                    className={`rounded-lg border p-3 text-left transition-colors ${appointmentType === type.value
+                      ? 'border-teal-500 bg-teal-500/10 text-white'
+                      : 'border-white/10 bg-white/5 text-slate-300 hover:border-white/20'
+                      }`}
                   >
                     <p className="text-sm font-medium">{type.label}</p>
                     <p className="text-xs text-slate-500">
@@ -320,29 +371,55 @@ function NewAppointmentContent() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">
-                  <Calendar className="inline h-4 w-4 mr-1" />
                   Date
                 </label>
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white focus:border-teal-500 focus:outline-none"
-                />
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-teal-400 pointer-events-none" />
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-10 pr-3 text-white focus:border-teal-500 focus:outline-none [color-scheme:dark]"
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">
-                  <Clock className="inline h-4 w-4 mr-1" />
                   Time
                 </label>
-                <input
-                  type="time"
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
-                  min="08:00"
-                  max="17:00"
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white focus:border-teal-500 focus:outline-none"
-                />
+                <div className="relative">
+                  <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-teal-400 pointer-events-none" />
+                  <input
+                    type="time"
+                    value={time}
+                    onChange={(e) => setTime(e.target.value)}
+                    min="07:00"
+                    max="21:00"
+                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-10 pr-3 text-white focus:border-teal-500 focus:outline-none [color-scheme:dark]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Time Selection */}
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-3 flex items-center gap-2">
+                <Clock className="w-3 h-3" />
+                Quick Selection
+              </label>
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                {['08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00', '17:00'].map((slot) => (
+                  <button
+                    key={slot}
+                    onClick={() => setTime(slot)}
+                    className={`py-2 px-1 text-xs font-medium rounded-lg border transition-all ${time === slot
+                      ? 'bg-teal-500/20 border-teal-500 text-teal-400'
+                      : 'bg-white/5 border-white/10 text-slate-400 hover:border-white/20 hover:bg-white/10'
+                      }`}
+                  >
+                    {slot}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -372,6 +449,27 @@ function NewAppointmentContent() {
                 </div>
               )}
             </div>
+
+            {/* Conflict Warning */}
+            {conflicts.length > 0 && (
+              <div className="flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-4 animate-in fade-in slide-in-from-top-1">
+                <AlertTriangle className="h-5 w-5 text-red-400 mt-0.5" />
+                <div>
+                  <p className="text-sm font-bold text-red-400">Scheduling Conflict</p>
+                  <p className="text-xs text-red-300 mt-1">
+                    The provider already has an appointment during this time.
+                    Please select a different slot or adjust the duration.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {checkingConflicts && (
+              <div className="flex items-center gap-2 text-xs text-slate-400 px-1 pt-2">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Checking availability...
+              </div>
+            )}
 
             <div className="flex gap-3">
               <button
