@@ -8,17 +8,102 @@ Logs all access to sensitive resources as required by:
 Audit logs are retained for 15 years per Cyprus healthcare regulations.
 """
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from fastapi import Request, Response
+from sqlalchemy import BigInteger, Column, DateTime, Integer, String, Text, text
+from sqlalchemy.dialects.postgresql import INET, JSONB
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
+from app.db.base import Base
+
 logger = logging.getLogger(__name__)
 
+
+# =============================================================================
+# SecurityAudit ORM Model (maps to partitioned table from migration 0001)
+# =============================================================================
+
+
+class SecurityAudit(Base):
+    """
+    ORM model for the security_audit partitioned table.
+
+    The underlying table is range-partitioned by timestamp (yearly partitions
+    2024-2040) for 15-year GDPR/Cyprus Law 125(I)/2018 retention compliance.
+    This model is append-only — records are never updated or deleted.
+    """
+
+    __tablename__ = "security_audit"
+    __table_args__ = {"extend_existing": True}
+
+    audit_id = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=True)
+    user_email = Column(String(255), nullable=True)
+    user_role = Column(String(50), nullable=True)
+    clinic_id = Column(Integer, nullable=True)
+    ip_address = Column(INET, nullable=False)
+    user_agent = Column(String(500), nullable=True)
+    session_id = Column(String(100), nullable=True)
+    action = Column(String(50), nullable=False)
+    resource_type = Column(String(50), nullable=True)
+    resource_id = Column(String(100), nullable=True)
+    request_path = Column(String(500), nullable=False)
+    request_method = Column(String(10), nullable=False)
+    request_body_hash = Column(String(64), nullable=True)
+    response_status = Column(Integer, nullable=False)
+    response_time_ms = Column(Integer, nullable=False)
+    error_message = Column(Text, nullable=True)
+    additional_data = Column(JSONB, nullable=True)
+    timestamp = Column(
+        DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+    )
+
+
+async def _insert_audit_to_db(audit_data: dict) -> None:
+    """
+    Insert audit entry to database (fire-and-forget).
+
+    Uses its own session to avoid interfering with the request's transaction.
+    Errors are logged but never propagated to the caller.
+    """
+    from app.db.session import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as session:
+            audit = SecurityAudit(
+                user_id=audit_data.get("user_id"),
+                user_email=audit_data.get("user_email"),
+                user_role=audit_data.get("user_role"),
+                clinic_id=audit_data.get("clinic_id"),
+                ip_address=audit_data.get("ip_address") or "0.0.0.0",
+                user_agent=audit_data.get("user_agent"),
+                session_id=audit_data.get("session_id"),
+                action=audit_data.get("action", "UNKNOWN"),
+                resource_type=audit_data.get("resource_type"),
+                resource_id=audit_data.get("resource_id"),
+                request_path=audit_data.get("request_path", "/unknown"),
+                request_method=audit_data.get("request_method", "UNKNOWN"),
+                request_body_hash=audit_data.get("request_body_hash"),
+                response_status=audit_data.get("response_status", 0),
+                response_time_ms=audit_data.get("duration_ms", 0),
+                error_message=audit_data.get("error_message"),
+                additional_data=audit_data.get("additional_data"),
+            )
+            session.add(audit)
+            await session.commit()
+    except Exception as e:
+        logger.error(f"Failed to insert audit log to DB: {e}")
+
+
+# =============================================================================
+# Audit Configuration
+# =============================================================================
 
 # Paths that require audit logging
 AUDITED_PATHS = [
@@ -147,8 +232,8 @@ class AuditMiddleware(BaseHTTPMiddleware):
             f"- {audit_entry['response_status']} in {duration_ms}ms"
         )
 
-        # TODO: Insert into security_audit table asynchronously
-        # await self._insert_audit_log(audit_entry)
+        # Fire-and-forget DB insert (non-blocking)
+        asyncio.create_task(_insert_audit_to_db(audit_entry))
 
     def _get_client_ip(self, request: Request) -> str:
         """Extract client IP, handling proxies."""

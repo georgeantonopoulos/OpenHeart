@@ -81,6 +81,7 @@ services:
       ORTHANC_URL: http://orthanc:8042
       ORTHANC_USERNAME: admin
       ORTHANC_PASSWORD: ${ORTHANC_PASSWORD:-orthanc_dev_password}
+      OHIF_URL: http://localhost:3001
 
       # MinIO/S3
       S3_ENDPOINT: http://minio:9000
@@ -114,6 +115,7 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
       NEXT_PUBLIC_ORTHANC_URL: http://localhost:8042
+      NEXT_PUBLIC_OHIF_URL: http://localhost:3001
     volumes:
       - ./frontend:/app
     ports:
@@ -126,6 +128,7 @@ services:
   # Orthanc DICOM Server
   orthanc:
     image: orthancteam/orthanc:24.1.0
+    platform: linux/amd64
     container_name: openheart-orthanc
     environment:
       ORTHANC__NAME: "OpenHeart Cyprus PACS"
@@ -136,7 +139,7 @@ services:
       ORTHANC__DICOM_WEB__ENABLE: "true"
       ORTHANC__DICOM_WEB__ROOT: /dicom-web/
       ORTHANC__CORS_ENABLED: "true"
-      ORTHANC__CORS_ALLOWED_ORIGINS: '["http://localhost:3000", "http://frontend:3000"]'
+      ORTHANC__CORS_ALLOWED_ORIGINS: '["http://localhost:3000", "http://frontend:3000", "http://localhost:3001", "http://ohif:80"]'
     volumes:
       - orthanc-data:/var/lib/orthanc/db
     ports:
@@ -147,6 +150,21 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - openheart-network
+
+  # OHIF Viewer (DICOM Web Viewer)
+  ohif:
+    image: ohif/app:v3.9
+    platform: linux/amd64
+    container_name: openheart-ohif
+    volumes:
+      - ./config/ohif/app-config.js:/usr/share/nginx/html/app-config.js:ro
+    ports:
+      - "3001:80"
+    depends_on:
+      orthanc:
+        condition: service_healthy
     networks:
       - openheart-network
 

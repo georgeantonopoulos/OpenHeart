@@ -51,6 +51,9 @@ dependencies = [
     # HTTP Client
     "httpx>=0.26.0",
 
+    # Email
+    "aiosmtplib>=2.0.0",
+
     # File Processing
     "python-magic>=0.4.27",
     "pymupdf>=1.23.0",

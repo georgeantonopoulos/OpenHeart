@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     jwt_expiry_minutes: int = Field(default=15, ge=5, le=60)
     refresh_token_expiry_days: int = Field(default=7, ge=1, le=30)
 
+    # Frontend URL (for email links)
+    frontend_url: str = Field(
+        default="http://localhost:3000",
+        description="Frontend URL for password reset and invitation links",
+    )
+
     # MFA Settings
     mfa_required: bool = Field(
         default=True, description="Require MFA for all clinical accounts"
@@ -80,6 +86,21 @@ class Settings(BaseSettings):
     # Rate Limiting
     rate_limit_requests: int = Field(default=100, description="Requests per window")
     rate_limit_window_seconds: int = Field(default=60, description="Window in seconds")
+
+    # ==========================================================================
+    # Email (SMTP)
+    # ==========================================================================
+    smtp_host: str = Field(default="", description="SMTP server host")
+    smtp_port: int = Field(default=587, description="SMTP server port")
+    smtp_username: str | None = Field(default=None, description="SMTP username")
+    smtp_password: str | None = Field(default=None, description="SMTP password")
+    smtp_from_email: str = Field(
+        default="noreply@openheart.cy", description="From email address"
+    )
+    smtp_from_name: str = Field(
+        default="OpenHeart Cyprus", description="From display name"
+    )
+    smtp_use_tls: bool = Field(default=True, description="Use STARTTLS")
 
     # ==========================================================================
     # CORS
@@ -97,6 +118,9 @@ class Settings(BaseSettings):
     )
     orthanc_username: str = Field(default="admin")
     orthanc_password: str = Field(default="orthanc_dev_password")
+    ohif_url: str = Field(
+        default="http://localhost:3001", description="OHIF Viewer URL"
+    )
 
     # ==========================================================================
     # S3/MinIO (File Storage)

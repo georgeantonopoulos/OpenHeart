@@ -290,9 +290,7 @@ class MFAService:
         Raises:
             ValueError: If password is incorrect
         """
-        from passlib.context import CryptContext
-
-        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        from app.core.security import verify_password
 
         # Get user
         result = await self.db.execute(
@@ -303,8 +301,8 @@ class MFAService:
         if not user:
             raise ValueError("User not found")
 
-        # Verify password
-        if not pwd_context.verify(password, user.password_hash):
+        # Verify password (supports both Argon2id and legacy bcrypt)
+        if not verify_password(password, user.password_hash):
             await log_auth_event(
                 event=AuthEvent.MFA_DISABLE_FAILED,
                 email=user.email,

@@ -1,7 +1,13 @@
+import { getServerSession } from 'next-auth';
 import { redirect } from 'next/navigation';
+import { authOptions } from '@/lib/auth-options';
 
-export default function Home() {
-  // Redirect to login or dashboard based on auth status
-  // For now, redirect to login
+export default async function Home() {
+  const session = await getServerSession(authOptions);
+
+  if (session) {
+    redirect('/dashboard');
+  }
+
   redirect('/login');
 }

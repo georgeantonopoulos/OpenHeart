@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.permissions import Permission, require_permission
-from app.core.security import TokenPayload, create_access_token, decode_token
+from app.core.security import TokenPayload, create_access_token, decode_token, get_current_user
 from app.db.session import get_db
 from app.modules.auth.invitation import InvitationService
 from app.modules.auth.schemas import (
@@ -114,6 +114,17 @@ async def login(
 
     # Create tokens
     access_token, refresh_token = service.create_tokens(user, clinic_role)
+
+    # Create server-side session for token tracking
+    from app.modules.auth.session_manager import SessionManager
+
+    session_manager = SessionManager(service.db)
+    await session_manager.create_session(
+        user_id=user.user_id,
+        token=access_token,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
 
     return LoginResponse(
         access_token=access_token,
@@ -236,52 +247,51 @@ async def refresh_token(
     "/logout",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def logout(request: Request) -> None:
+async def logout(
+    request: Request,
+    user: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
     """
-    Logout user and invalidate session.
+    Logout user: blacklist token in Redis and revoke server-side session.
 
-    **Current Implementation (Phase 1):**
-    This is a no-op since we use stateless JWTs.
-    The client should delete stored tokens locally.
-
-    **Future Implementation (Phase 2):**
-    Will add token blacklisting via Redis to support
-    immediate session invalidation.
+    The token is immediately invalidated — any subsequent request
+    using this token will receive a 401 response.
     """
-    # Log logout attempt (best effort - may not have valid token)
+    from datetime import datetime, timezone
+
+    from app.core.redis import blacklist_token, get_redis
+    from app.modules.auth.session_manager import SessionManager
+
     ip_address = get_client_ip(request)
     user_agent = request.headers.get("user-agent", "")
 
-    # Try to extract email from Authorization header for logging
+    # Extract raw token for session revocation
     auth_header = request.headers.get("authorization", "")
-    email = "unknown"
+    token = auth_header[7:] if auth_header.startswith("Bearer ") else ""
 
-    if auth_header.startswith("Bearer "):
-        try:
-            token = auth_header[7:]
-            payload = decode_token(token)
-            email = payload.email
+    # Blacklist the token in Redis (expires when token would have expired)
+    if user.jti:
+        redis_client = await get_redis(request)
+        now = datetime.now(timezone.utc)
+        remaining_ttl = max(int((user.exp - now).total_seconds()), 0)
+        if remaining_ttl > 0:
+            await blacklist_token(redis_client, user.jti, remaining_ttl)
 
-            await log_auth_event(
-                event=AuthEvent.LOGOUT,
-                email=email,
-                ip_address=ip_address,
-                user_agent=user_agent,
-                user_id=payload.sub,
-                clinic_id=payload.clinic_id,
-            )
-        except Exception:
-            # Token might be expired or invalid, still log logout attempt
-            await log_auth_event(
-                event=AuthEvent.LOGOUT,
-                email=email,
-                ip_address=ip_address,
-                user_agent=user_agent,
-                details="Token invalid or expired",
-            )
+    # Revoke server-side session
+    if token:
+        session_manager = SessionManager(db)
+        await session_manager.revoke_session_by_token(token, reason="logout")
 
-    # TODO (Phase 2): Add token to Redis blacklist
-    # await redis.setex(f"blacklist:{token}", settings.jwt_expiry_minutes * 60, "1")
+    # Log logout event
+    await log_auth_event(
+        event=AuthEvent.LOGOUT,
+        email=user.email,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        user_id=user.sub,
+        clinic_id=user.clinic_id,
+    )
 
     return None
 
@@ -589,9 +599,33 @@ async def verify_mfa_challenge(
             detail="Invalid MFA code",
         )
 
-    # TODO: Return new token with mfa_verified=True
-    # This requires creating a new access token
-    return {"success": True, "message": "MFA verified successfully"}
+    # Issue new token with mfa_verified=True
+    new_access_token = create_access_token(
+        user_id=user.sub,
+        email=user.email,
+        clinic_id=user.clinic_id,
+        role=user.role,
+        mfa_verified=True,
+    )
+
+    # Blacklist the old token (mfa_verified=False) so it can't be reused
+    if user.jti:
+        from datetime import datetime, timezone
+
+        from app.core.redis import blacklist_token, get_redis
+
+        redis_client = await get_redis(request)
+        now = datetime.now(timezone.utc)
+        remaining_ttl = max(int((user.exp - now).total_seconds()), 0)
+        if remaining_ttl > 0:
+            await blacklist_token(redis_client, user.jti, remaining_ttl)
+
+    return {
+        "success": True,
+        "access_token": new_access_token,
+        "token_type": "bearer",
+        "expires_in": settings.jwt_expiry_minutes * 60,
+    }
 
 
 @router.delete(
@@ -781,11 +815,13 @@ async def reset_password(
     user_agent = request.headers.get("user-agent", "")
 
     try:
+        redis_client = getattr(request.app.state, "redis", None)
         await service.reset_password(
             token=token,
             new_password=new_password,
             ip_address=ip_address,
             user_agent=user_agent,
+            redis_client=redis_client,
         )
         return {"success": True, "message": "Password has been reset successfully"}
     except ValueError as e:
@@ -824,12 +860,14 @@ async def change_password(
     user_agent = request.headers.get("user-agent", "")
 
     try:
+        redis_client = getattr(request.app.state, "redis", None)
         await service.change_password(
             user_id=user.sub,
             current_password=current_password,
             new_password=new_password,
             ip_address=ip_address,
             user_agent=user_agent,
+            redis_client=redis_client,
         )
         return {"success": True, "message": "Password changed successfully"}
     except ValueError as e:

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { signOut } from 'next-auth/react';
 import { Session } from 'next-auth';
 import Link from 'next/link';
@@ -7,6 +8,7 @@ import QuickStats from './components/QuickStats';
 import TodayAppointments from './components/TodayAppointments';
 import RecentPatients from './components/RecentPatients';
 import QuickActions from './components/QuickActions';
+import { CommandPalette } from '@/components/CommandPalette';
 
 interface DashboardContentProps {
   session: Session;
@@ -46,6 +48,21 @@ export default function DashboardContent({ session }: DashboardContentProps) {
       day: 'numeric',
     });
   };
+
+  // Command palette state
+  const [commandOpen, setCommandOpen] = useState(false);
+
+  // CMD+K / Ctrl+K keyboard shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setCommandOpen((prev) => !prev);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-950">
@@ -120,9 +137,7 @@ export default function DashboardContent({ session }: DashboardContentProps) {
               {/* Global Search */}
               <button
                 className="hidden sm:flex items-center px-3 py-1.5 text-sm text-slate-400 bg-slate-800 border border-slate-700 rounded-lg hover:border-slate-600 transition-colors"
-                onClick={() => {
-                  // TODO: Open command palette
-                }}
+                onClick={() => setCommandOpen(true)}
               >
                 <svg
                   className="w-4 h-4 mr-2"
@@ -267,6 +282,9 @@ export default function DashboardContent({ session }: DashboardContentProps) {
           </p>
         </div>
       </footer>
+
+      {/* Command Palette */}
+      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
     </div>
   );
 }

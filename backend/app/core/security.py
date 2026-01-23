@@ -10,11 +10,12 @@ rehashing of legacy bcrypt hashes on successful login.
 
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Tuple
+from uuid import uuid4
 
 import pyotp
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -55,6 +56,7 @@ class TokenPayload(BaseModel):
     email: str
     clinic_id: int
     role: str
+    jti: str = ""  # JWT ID for token blacklisting (empty = legacy token)
     mfa_verified: bool = False
     token_type: str = "access"
     exp: datetime
@@ -199,6 +201,7 @@ def create_access_token(
         "email": email,
         "clinic_id": clinic_id,
         "role": role,
+        "jti": str(uuid4()),
         "mfa_verified": mfa_verified,
         "token_type": "access",
         "exp": expire,
@@ -223,6 +226,7 @@ def create_refresh_token(user_id: int) -> str:
 
     payload = {
         "sub": user_id,
+        "jti": str(uuid4()),
         "token_type": "refresh",
         "exp": expire,
         "iat": now,
@@ -266,20 +270,50 @@ def decode_token(token: str) -> TokenPayload:
 
 async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    request: Request,
 ) -> TokenPayload:
     """
     Dependency to get the current authenticated user from JWT token.
 
+    Validates the token signature/expiry, then checks Redis for:
+    1. Token-level blacklisting (logout)
+    2. User-level session invalidation (password reset)
+
     Args:
         credentials: HTTP Bearer token credentials
+        request: FastAPI request (for Redis access)
 
     Returns:
         Decoded token payload with user information
 
     Raises:
-        HTTPException: If token is missing, invalid, or expired
+        HTTPException: If token is missing, invalid, expired, or revoked
     """
-    return decode_token(credentials.credentials)
+    payload = decode_token(credentials.credentials)
+
+    # Check token blacklist and user invalidation via Redis
+    redis_client = getattr(request.app.state, "redis", None)
+    if redis_client and payload.jti:
+        from app.core.redis import get_user_invalidation_time, is_token_blacklisted
+
+        # Check if this specific token was blacklisted (e.g., on logout)
+        if await is_token_blacklisted(redis_client, payload.jti):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # Check if user sessions were globally invalidated after this token was issued
+        invalidation_time = await get_user_invalidation_time(redis_client, payload.sub)
+        if invalidation_time and payload.iat.replace(tzinfo=None) < invalidation_time.replace(tzinfo=None):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session invalidated. Please log in again.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+    return payload
 
 
 async def require_mfa(

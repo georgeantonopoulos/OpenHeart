@@ -104,10 +104,26 @@ async def log_auth_event(
     else:
         logger.info(f"AUTH_AUDIT: {event.value} for {email} from {ip_address}")
 
-    # TODO: Insert into security_audit table asynchronously
-    # await db.execute(
-    #     insert(SecurityAudit).values(**log_entry)
-    # )
+    # Fire-and-forget DB insertion (non-blocking)
+    import asyncio
+
+    from app.core.audit import _insert_audit_to_db
+
+    audit_data = {
+        "user_id": user_id,
+        "user_email": email,
+        "clinic_id": clinic_id,
+        "ip_address": ip_address or "0.0.0.0",
+        "user_agent": user_agent[:500] if user_agent else None,
+        "action": event.value,
+        "resource_type": "auth",
+        "request_path": "/api/auth",
+        "request_method": "POST",
+        "response_status": 200 if "SUCCESS" in event.value or "COMPLETED" in event.value else 401,
+        "duration_ms": 0,
+        "additional_data": {"details": details} if details else None,
+    }
+    asyncio.create_task(_insert_audit_to_db(audit_data))
 
 
 class AuthService:

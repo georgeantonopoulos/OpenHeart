@@ -7,7 +7,7 @@ Tokens are single-use and expire after 1 hour.
 
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -179,10 +179,10 @@ class PasswordResetService:
             user_id=user.user_id,
         )
 
-        # TODO: Send email with reset link
-        # In production, this would call an email service
-        # reset_url = f"{settings.frontend_url}/reset-password?token={token}"
-        # await email_service.send_password_reset(user.email, reset_url)
+        # Send password reset email (dev mode: logs to console)
+        from app.core.email import send_password_reset_email
+
+        await send_password_reset_email(to=user.email, reset_token=token)
 
         return True
 
@@ -232,6 +232,7 @@ class PasswordResetService:
         new_password: str,
         ip_address: str = "",
         user_agent: str = "",
+        redis_client: Optional[Any] = None,
     ) -> bool:
         """
         Reset password using a valid token.
@@ -311,8 +312,19 @@ class PasswordResetService:
             user_id=user.user_id,
         )
 
-        # TODO: Invalidate all existing sessions for this user
-        # This requires the session management system
+        # Invalidate all existing sessions (DB-level)
+        from app.modules.auth.session_manager import SessionManager
+
+        session_manager = SessionManager(self.db)
+        await session_manager.revoke_all_user_sessions(
+            user_id=user.user_id, reason="password_reset"
+        )
+
+        # Invalidate all tokens via Redis (instant, covers tokens not yet expired)
+        if redis_client:
+            from app.core.redis import invalidate_user_sessions
+
+            await invalidate_user_sessions(redis_client, user.user_id)
 
         return True
 
@@ -323,6 +335,7 @@ class PasswordResetService:
         new_password: str,
         ip_address: str = "",
         user_agent: str = "",
+        redis_client: Optional[Any] = None,
     ) -> bool:
         """
         Change password for authenticated user.
@@ -388,7 +401,20 @@ class PasswordResetService:
             user_id=user_id,
         )
 
-        # TODO: Invalidate all sessions except current
+        # Invalidate all other sessions
+        from app.modules.auth.session_manager import SessionManager
+
+        session_manager = SessionManager(self.db)
+        await session_manager.revoke_all_user_sessions(
+            user_id=user_id, reason="password_change"
+        )
+
+        # Invalidate all tokens via Redis
+        if redis_client:
+            from app.core.redis import invalidate_user_sessions
+
+            await invalidate_user_sessions(redis_client, user_id)
+
         return True
 
     async def cleanup_expired_tokens(self) -> int:
