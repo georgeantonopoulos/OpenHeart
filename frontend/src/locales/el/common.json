@@ -3,12 +3,48 @@
     "name": "OpenHeart Κύπρος",
     "tagline": "Καρδιολογικό EMR για την Κύπρο"
   },
+  "dashboard": {
+    "greeting": {
+      "morning": "Καλημέρα",
+      "afternoon": "Καλό απόγευμα",
+      "evening": "Καλησπέρα"
+    },
+    "schedule": "Πρόγραμμα Ημέρας",
+    "recent_patients": "Πρόσφατοι Ασθενείς",
+    "quick_actions": "Γρήγορες Ενέργειες",
+    "view_all": "Προβολή Όλων",
+    "add_appointment": "Προσθήκη Ραντεβού",
+    "add_patient": "Νέος Ασθενής",
+    "today": "Σήμερα",
+    "coming_soon": "Σύντομα διαθέσιμο",
+    "coming_soon_desc": "Αυτή η λειτουργία θα είναι σύντομα διαθέσιμη"
+  },
+  "stats": {
+    "appointments_today": "Σήμερα Ραντεβού",
+    "total_patients": "Σύνολο Ασθενών",
+    "pending_notes": "Εκκρεμείς Σημειώσεις",
+    "pending_claims": "Εκκρεμείς Απαιτήσεις",
+    "active_records": "Ενεργά αρχεία",
+    "completed": "ολοκληρώθηκαν"
+  },
+  "actions": {
+    "find_patient": "Εύρεση Ασθενή",
+    "find_patient_desc": "Αναζήτηση αρχείων",
+    "cdss_desc": "Υπολογιστές κινδύνου",
+    "new_note_desc": "Κλινική τεκμηρίωση",
+    "imaging_desc": "Προβολή DICOM",
+    "schedule_desc": "Λίστα Echo/Cath",
+    "referrals_desc": "Εισερχόμενα παραπεμπτικά",
+    "claims_desc": "Υποβολές ΓεΣΥ",
+    "referrals": "Παραπεμπτικά",
+    "claims": "Απαιτήσεις"
+  },
   "nav": {
     "dashboard": "Πίνακας Ελέγχου",
     "patients": "Ασθενείς",
     "encounters": "Επισκέψεις",
     "imaging": "Απεικόνιση",
-    "cdss": "Υπολογιστές Κινδύνου",
+    "cdss": "Υπολογιστές",
     "reports": "Αναφορές",
     "settings": "Ρυθμίσεις",
     "logout": "Αποσύνδεση"

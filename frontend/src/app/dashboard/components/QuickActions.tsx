@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useTranslation } from 'react-i18next';
 
 interface QuickAction {
   label: string;
@@ -22,10 +23,12 @@ interface QuickAction {
  * - Claims
  */
 export default function QuickActions() {
+  const { t } = useTranslation('common');
+
   const actions: QuickAction[] = [
     {
-      label: 'Find Patient',
-      description: 'Search records',
+      label: t('actions.find_patient'),
+      description: t('actions.find_patient_desc'),
       href: '/patients',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -41,7 +44,7 @@ export default function QuickActions() {
     },
     {
       label: 'CDSS',
-      description: 'Risk calculators',
+      description: t('actions.cdss_desc'),
       href: '/cdss',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -56,8 +59,8 @@ export default function QuickActions() {
       color: 'rose',
     },
     {
-      label: 'New Note',
-      description: 'Clinical documentation',
+      label: t('notes.new_note'),
+      description: t('actions.new_note_desc'),
       href: '/notes/new',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -72,8 +75,8 @@ export default function QuickActions() {
       color: 'purple',
     },
     {
-      label: 'Imaging',
-      description: 'DICOM viewer',
+      label: t('nav.imaging'),
+      description: t('actions.imaging_desc'),
       href: '/imaging',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -88,8 +91,8 @@ export default function QuickActions() {
       color: 'teal',
     },
     {
-      label: 'Schedule',
-      description: 'Echo/Cath worklist',
+      label: t('dashboard.schedule'),
+      description: t('actions.schedule_desc'),
       href: '/procedures/schedule',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -104,8 +107,8 @@ export default function QuickActions() {
       color: 'amber',
     },
     {
-      label: 'Referrals',
-      description: 'Incoming referrals',
+      label: t('actions.referrals'),
+      description: t('actions.referrals_desc'),
       href: '/referrals/incoming',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -120,8 +123,8 @@ export default function QuickActions() {
       color: 'amber',
     },
     {
-      label: 'Claims',
-      description: 'Gesy submissions',
+      label: t('actions.claims'),
+      description: t('actions.claims_desc'),
       href: '/billing/claims',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -167,13 +170,13 @@ export default function QuickActions() {
 
   return (
     <div className="bg-slate-900 rounded-lg border border-slate-800 p-4">
-      <h2 className="text-lg font-semibold text-white mb-4">Quick Actions</h2>
+      <h2 className="text-lg font-semibold text-white mb-4">{t('dashboard.quick_actions')}</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {actions.map((action) => {
           const colors = colorClasses[action.color];
           return (
             <Link
-              key={action.label}
+              key={action.href}
               href={action.href}
               className={`${colors.bg} ${colors.hover} rounded-lg border border-slate-700 p-4 transition-all group`}
             >

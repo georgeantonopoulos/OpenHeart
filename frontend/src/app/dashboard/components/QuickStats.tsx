@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useQuery } from '@tanstack/react-query';
 import { getTodayAppointments } from '@/lib/api/appointments';
 import { listPatients } from '@/lib/api/patients';
+import { useTranslation } from 'react-i18next';
 
 interface StatItem {
   label: string;
@@ -26,6 +27,7 @@ interface StatItem {
  * - Pending claims (coming soon)
  */
 export default function QuickStats() {
+  const { t } = useTranslation('common');
   const { data: session } = useSession();
 
   const { data: todayAppointments = [] } = useQuery({
@@ -44,10 +46,10 @@ export default function QuickStats() {
 
   const stats: StatItem[] = [
     {
-      label: 'Appointments Today',
+      label: t('stats.appointments_today'),
       value: todayAppointments.length,
       change: todayAppointments.length > 0
-        ? `${todayAppointments.filter(a => a.status === 'completed').length} completed`
+        ? `${todayAppointments.filter(a => a.status === 'completed').length} ${t('stats.completed')}`
         : undefined,
       changeType: 'neutral',
       href: '/appointments',
@@ -64,9 +66,9 @@ export default function QuickStats() {
       color: 'blue',
     },
     {
-      label: 'Total Patients',
+      label: t('stats.total_patients'),
       value: patientList?.total ?? '—',
-      change: patientList?.total != null ? 'Active records' : undefined,
+      change: patientList?.total != null ? t('stats.active_records') : undefined,
       changeType: 'neutral',
       href: '/patients',
       icon: (
@@ -82,9 +84,9 @@ export default function QuickStats() {
       color: 'teal',
     },
     {
-      label: 'Pending Notes',
+      label: t('stats.pending_notes'),
       value: '—',
-      change: 'Coming soon',
+      change: t('dashboard.coming_soon'),
       changeType: 'neutral',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -99,9 +101,9 @@ export default function QuickStats() {
       color: 'amber',
     },
     {
-      label: 'Pending Claims',
+      label: t('stats.pending_claims'),
       value: '—',
-      change: 'Coming soon',
+      change: t('dashboard.coming_soon'),
       changeType: 'neutral',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

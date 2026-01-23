@@ -11,9 +11,11 @@ import {
   NoteType,
   getNoteTypeLabel,
   SOAPContent,
+  uploadAttachment,
 } from '@/lib/api/notes';
 import { getPatient } from '@/lib/api/patients';
 import { ApiClientError } from '@/lib/api/client';
+import { Paperclip, X } from 'lucide-react';
 
 /**
  * New Clinical Note Page.
@@ -36,7 +38,9 @@ export default function NewNotePage() {
     assessment: '',
     plan: '',
   });
+  const [attachments, setAttachments] = useState<File[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [uploading, setUploading] = useState(false);
 
   // Fetch patient
   const { data: patient } = useQuery({
@@ -47,13 +51,35 @@ export default function NewNotePage() {
 
   // Create mutation
   const mutation = useMutation({
-    mutationFn: (data: NoteCreateInput) => createNote(session?.accessToken || '', data),
+    mutationFn: async (data: NoteCreateInput) => {
+      const note = await createNote(session?.accessToken || '', data);
+
+      // Upload attachments if any
+      if (attachments.length > 0) {
+        setUploading(true);
+        try {
+          await Promise.all(
+            attachments.map((file) =>
+              uploadAttachment(session?.accessToken || '', note.note_id, file)
+            )
+          );
+        } catch (err) {
+          console.error('Failed to upload attachments:', err);
+          // We don't fail the whole creation, just log it. 
+          // Ideally we'd show a toast warning that attachments failed.
+        } finally {
+          setUploading(false);
+        }
+      }
+      return note;
+    },
     onSuccess: (note) => {
       router.push(`/patients/${patientId}/notes/${note.note_id}`);
     },
     onError: (error: Error) => {
       const message = error instanceof ApiClientError ? error.detail : error.message;
       setErrors({ form: message });
+      setUploading(false);
     },
   });
 
@@ -176,11 +202,10 @@ export default function NewNotePage() {
                   key={type.value}
                   type="button"
                   onClick={() => setNoteType(type.value)}
-                  className={`p-3 rounded-lg border text-left transition-all ${
-                    noteType === type.value
-                      ? 'border-rose-500 bg-rose-900/20'
-                      : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
-                  }`}
+                  className={`p-3 rounded-lg border text-left transition-all ${noteType === type.value
+                    ? 'border-rose-500 bg-rose-900/20'
+                    : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
+                    }`}
                 >
                   <p className="text-sm font-medium text-white">{type.label}</p>
                   <p className="text-xs text-slate-400 mt-0.5">{type.description}</p>
@@ -202,9 +227,8 @@ export default function NewNotePage() {
               id="title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className={`w-full px-4 py-2 bg-slate-800 border rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 ${
-                errors.title ? 'border-red-500' : 'border-slate-700'
-              }`}
+              className={`w-full px-4 py-2 bg-slate-800 border rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 ${errors.title ? 'border-red-500' : 'border-slate-700'
+                }`}
               placeholder="e.g., Follow-up Visit - CHF Management"
             />
             {errors.title && (
@@ -281,9 +305,8 @@ export default function NewNotePage() {
                   onChange={(e) =>
                     setSoapContent((prev) => ({ ...prev, assessment: e.target.value }))
                   }
-                  className={`w-full px-4 py-2 bg-slate-800 border rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 ${
-                    errors.assessment ? 'border-red-500' : 'border-slate-700'
-                  }`}
+                  className={`w-full px-4 py-2 bg-slate-800 border rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 ${errors.assessment ? 'border-red-500' : 'border-slate-700'
+                    }`}
                   placeholder="1. CHF NYHA Class II - stable on current therapy..."
                 />
                 {errors.assessment && (
@@ -333,9 +356,8 @@ export default function NewNotePage() {
                 rows={12}
                 value={freeTextContent}
                 onChange={(e) => setFreeTextContent(e.target.value)}
-                className={`w-full px-4 py-2 bg-slate-800 border rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono text-sm ${
-                  errors.content ? 'border-red-500' : 'border-slate-700'
-                }`}
+                className={`w-full px-4 py-2 bg-slate-800 border rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono text-sm ${errors.content ? 'border-red-500' : 'border-slate-700'
+                  }`}
                 placeholder="Enter clinical note content..."
               />
               {errors.content && (
@@ -343,6 +365,74 @@ export default function NewNotePage() {
               )}
             </div>
           )}
+
+          {/* Attachments */}
+          <div className="bg-slate-900 rounded-lg border border-slate-800 p-6">
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Attachments
+            </label>
+            <p className="text-xs text-slate-500 mb-4">
+              Add relevant documents (PDF, DOCX, Images). Max 10MB per file.
+            </p>
+
+            <div className="space-y-3">
+              {/* File List */}
+              {attachments.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {attachments.map((file, index) => (
+                    <div
+                      key={`${file.name}-${index}`}
+                      className="flex items-center justify-between p-2 bg-slate-800 rounded border border-slate-700"
+                    >
+                      <div className="flex items-center space-x-2 truncate">
+                        <Paperclip className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                        <span className="text-sm text-slate-200 truncate">{file.name}</span>
+                        <span className="text-xs text-slate-500 flex-shrink-0">
+                          ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAttachments(prev => prev.filter((_, i) => i !== index))}
+                        className="text-slate-400 hover:text-rose-400 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Upload Button */}
+              <div className="relative">
+                <input
+                  type="file"
+                  id="file-upload"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files) {
+                      setAttachments(prev => [...prev, ...Array.from(e.target.files || [])]);
+                    }
+                    // Reset input so same file can be selected again if deleted
+                    e.target.value = '';
+                  }}
+                />
+                <label
+                  htmlFor="file-upload"
+                  className="flex flex-col items-center justify-center w-full h-32 border-2 border-slate-700 border-dashed rounded-lg cursor-pointer bg-slate-800/30 hover:bg-slate-800/50 hover:border-slate-600 transition-all"
+                >
+                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    <Paperclip className="w-8 h-8 text-slate-500 mb-2" />
+                    <p className="text-sm text-slate-400">
+                      <span className="font-semibold">Click to upload</span> or drag and drop
+                    </p>
+                    <p className="text-xs text-slate-500">PDF, DOCX, PNG, JPG</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
 
           {/* Form Actions */}
           <div className="flex items-center justify-end space-x-4">
@@ -378,7 +468,7 @@ export default function NewNotePage() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     ></path>
                   </svg>
-                  Saving...
+                  {uploading ? 'Uploading Files...' : 'Saving...'}
                 </>
               ) : (
                 'Save Note'

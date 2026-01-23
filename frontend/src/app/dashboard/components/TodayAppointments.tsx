@@ -10,6 +10,7 @@ import {
   startEncounterFromAppointment,
   type Appointment
 } from '@/lib/api/appointments';
+import { useTranslation } from 'react-i18next';
 
 const typeLabels: Record<string, { label: string; color: string }> = {
   consultation: { label: 'Consultation', color: 'bg-purple-500/20 text-purple-300' },
@@ -38,6 +39,7 @@ const statusStyles: Record<string, { bg: string; dot: string }> = {
  * Shows the day's schedule fetched from the appointments API.
  */
 export default function TodayAppointments() {
+  const { t, i18n } = useTranslation('common');
   const { data: session } = useSession();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -53,7 +55,8 @@ export default function TodayAppointments() {
 
   const formatTime = (isoString: string) => {
     const date = new Date(isoString);
-    return date.toLocaleTimeString('en-CY', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const locale = i18n.language === 'el' ? 'el-GR' : 'en-CY';
+    return date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
   const isPastAppointment = (apt: Appointment) => {
@@ -84,16 +87,16 @@ export default function TodayAppointments() {
   return (
     <div className="bg-slate-900 rounded-lg border border-slate-800">
       <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-white">Today&apos;s Schedule</h2>
+        <h2 className="text-lg font-semibold text-white">{t('dashboard.schedule')}</h2>
         <Link
           href="/appointments"
           className="text-sm text-rose-400 hover:text-rose-300 transition-colors"
         >
-          View All
+          {t('dashboard.view_all')}
         </Link>
       </div>
 
-      <div className="divide-y divide-slate-800">
+      <div className="divide-y divide-slate-800 h-[300px] overflow-y-auto custom-scrollbar">
         {isLoading ? (
           // Loading skeleton
           Array.from({ length: 4 }).map((_, i) => (
@@ -110,7 +113,7 @@ export default function TodayAppointments() {
             </div>
           ))
         ) : appointments.length === 0 ? (
-          <div className="p-8 text-center text-slate-400">
+          <div className="p-8 text-center text-slate-400 h-full flex flex-col items-center justify-center">
             <svg
               className="mx-auto h-12 w-12 text-slate-500 mb-3"
               fill="none"
@@ -124,7 +127,7 @@ export default function TodayAppointments() {
                 d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
               />
             </svg>
-            <p>No appointments scheduled for today</p>
+            <p>{t('common.no_data')}</p>
           </div>
         ) : (
           appointments.map((apt: Appointment) => {
@@ -214,7 +217,7 @@ export default function TodayAppointments() {
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-          Add Appointment
+          {t('dashboard.add_appointment')}
         </Link>
       </div>
     </div>

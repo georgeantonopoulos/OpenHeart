@@ -5,6 +5,8 @@ import { useSession } from 'next-auth/react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import Link from 'next/link';
 import { getMFAStatus, changePassword, checkPasswordStrength } from '@/lib/api/auth';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { useTranslation } from 'react-i18next';
 
 /**
  * User Profile Page.
@@ -12,6 +14,7 @@ import { getMFAStatus, changePassword, checkPasswordStrength } from '@/lib/api/a
  * Shows user information and account settings.
  */
 export default function ProfilePage() {
+  const { t } = useTranslation('common');
   const { data: session } = useSession();
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -68,24 +71,27 @@ export default function ProfilePage() {
       {/* Header */}
       <div className="bg-slate-900 border-b border-slate-800">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center space-x-4">
-            <Link
-              href="/dashboard"
-              className="text-slate-400 hover:text-slate-200 transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                />
-              </svg>
-            </Link>
-            <div>
-              <h1 className="text-2xl font-bold text-white">Profile</h1>
-              <p className="text-sm text-slate-400">Manage your account settings</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <Link
+                href="/dashboard"
+                className="text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                  />
+                </svg>
+              </Link>
+              <div>
+                <h1 className="text-2xl font-bold text-white">{t('nav.settings')}</h1>
+                <p className="text-sm text-slate-400">Manage your account settings</p>
+              </div>
             </div>
+            <LanguageSwitcher />
           </div>
         </div>
       </div>
@@ -140,11 +146,10 @@ export default function ProfilePage() {
             </div>
             <Link
               href="/profile/security"
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                mfaStatus?.enabled
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${mfaStatus?.enabled
                   ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                   : 'bg-rose-600 text-white hover:bg-rose-700'
-              }`}
+                }`}
             >
               {mfaStatus?.enabled ? 'Manage' : 'Enable'}
             </Link>
@@ -207,15 +212,14 @@ export default function ProfilePage() {
                         {[1, 2, 3, 4, 5, 6].map((i) => (
                           <div
                             key={i}
-                            className={`h-1 flex-1 rounded ${
-                              i <= passwordStrength.score
+                            className={`h-1 flex-1 rounded ${i <= passwordStrength.score
                                 ? passwordStrength.strength === 'weak'
                                   ? 'bg-rose-500'
                                   : passwordStrength.strength === 'moderate'
                                     ? 'bg-amber-500'
                                     : 'bg-green-500'
                                 : 'bg-slate-700'
-                            }`}
+                              }`}
                           />
                         ))}
                       </div>
@@ -231,11 +235,10 @@ export default function ProfilePage() {
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className={`w-full px-4 py-2.5 bg-slate-800 border rounded-lg text-white placeholder:text-slate-500 focus:outline-none ${
-                      confirmPassword.length > 0 && !passwordsMatch
+                    className={`w-full px-4 py-2.5 bg-slate-800 border rounded-lg text-white placeholder:text-slate-500 focus:outline-none ${confirmPassword.length > 0 && !passwordsMatch
                         ? 'border-rose-500'
                         : 'border-slate-700 focus:border-rose-500'
-                    }`}
+                      }`}
                     placeholder="Confirm new password"
                   />
                   {confirmPassword.length > 0 && !passwordsMatch && (

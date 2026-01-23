@@ -3,12 +3,48 @@
     "name": "OpenHeart Cyprus",
     "tagline": "Cardiology EMR for Cyprus"
   },
+  "dashboard": {
+    "greeting": {
+      "morning": "Good morning",
+      "afternoon": "Good afternoon",
+      "evening": "Good evening"
+    },
+    "schedule": "Today's Schedule",
+    "recent_patients": "Recent Patients",
+    "quick_actions": "Quick Actions",
+    "view_all": "View All",
+    "add_appointment": "Add Appointment",
+    "add_patient": "Add New Patient",
+    "today": "Today",
+    "coming_soon": "Coming soon",
+    "coming_soon_desc": "Coming soon"
+  },
+  "stats": {
+    "appointments_today": "Appointments Today",
+    "total_patients": "Total Patients",
+    "pending_notes": "Pending Notes",
+    "pending_claims": "Pending Claims",
+    "active_records": "Active records",
+    "completed": "completed"
+  },
+  "actions": {
+    "find_patient": "Find Patient",
+    "find_patient_desc": "Search records",
+    "cdss_desc": "Risk calculators",
+    "new_note_desc": "Clinical documentation",
+    "imaging_desc": "DICOM viewer",
+    "schedule_desc": "Echo/Cath worklist",
+    "referrals_desc": "Incoming referrals",
+    "claims_desc": "Gesy submissions",
+    "referrals": "Referrals",
+    "claims": "Claims"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "patients": "Patients",
     "encounters": "Encounters",
     "imaging": "Imaging",
-    "cdss": "Risk Calculators",
+    "cdss": "Calculators",
     "reports": "Reports",
     "settings": "Settings",
     "logout": "Logout"

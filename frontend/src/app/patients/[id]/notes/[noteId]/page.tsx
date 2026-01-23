@@ -14,6 +14,8 @@ import {
   type NoteVersion,
   getNoteTypeLabel,
   getNoteTypeColor,
+  getAttachmentDownloadUrl,
+  type NoteAttachment,
 } from '@/lib/api/notes';
 import { getPatient } from '@/lib/api/patients';
 
@@ -127,6 +129,31 @@ export default function NoteDetailPage() {
   // View specific version
   const viewVersion = (version: NoteVersion) => {
     setSelectedVersion(version);
+  };
+
+  // Handle download
+  const handleDownload = async (attachment: NoteAttachment) => {
+    try {
+      const { download_url } = await getAttachmentDownloadUrl(
+        session?.accessToken || '',
+        noteId,
+        attachment.attachment_id
+      );
+      // In a real app with S3 presigned URLs, we might need to handle the URL differently
+      // For now, if it's a relative API path, pre-pend host if needed or use window.open
+      // The router returns /api/storage/..., which might need the base URL
+
+      // If the URL is relative, assume it comes from the API host
+      if (download_url.startsWith('/')) {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        window.open(`${apiUrl}${download_url}`, '_blank');
+      } else {
+        window.open(download_url, '_blank');
+      }
+    } catch (err) {
+      console.error('Failed to download:', err);
+      alert('Failed to download attachment');
+    }
   };
 
   if (!session) {
@@ -243,11 +270,10 @@ export default function NoteDetailPage() {
                     <button
                       key={version.version_id}
                       onClick={() => viewVersion(version)}
-                      className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                        selectedVersion?.version_id === version.version_id
-                          ? 'bg-rose-900/20 border border-rose-800'
-                          : 'bg-slate-800 hover:bg-slate-700'
-                      }`}
+                      className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${selectedVersion?.version_id === version.version_id
+                        ? 'bg-rose-900/20 border border-rose-800'
+                        : 'bg-slate-800 hover:bg-slate-700'
+                        }`}
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-white">
@@ -293,9 +319,8 @@ export default function NoteDetailPage() {
                     rows={15}
                     value={editContent}
                     onChange={(e) => setEditContent(e.target.value)}
-                    className={`w-full px-4 py-2 bg-slate-800 border rounded-lg text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 ${
-                      errors.content ? 'border-red-500' : 'border-slate-700'
-                    }`}
+                    className={`w-full px-4 py-2 bg-slate-800 border rounded-lg text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 ${errors.content ? 'border-red-500' : 'border-slate-700'
+                      }`}
                   />
                   {errors.content && (
                     <p className="mt-1 text-xs text-red-400">{errors.content}</p>
@@ -310,9 +335,8 @@ export default function NoteDetailPage() {
                     type="text"
                     value={editReason}
                     onChange={(e) => setEditReason(e.target.value)}
-                    className={`w-full px-4 py-2 bg-slate-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-rose-500 ${
-                      errors.reason ? 'border-red-500' : 'border-slate-700'
-                    }`}
+                    className={`w-full px-4 py-2 bg-slate-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-rose-500 ${errors.reason ? 'border-red-500' : 'border-slate-700'
+                      }`}
                     placeholder="e.g., Corrected medication dosage"
                   />
                   {errors.reason && (
@@ -388,7 +412,10 @@ export default function NoteDetailPage() {
                           </p>
                         </div>
                       </div>
-                      <button className="text-sm text-rose-400 hover:text-rose-300">
+                      <button
+                        onClick={() => handleDownload(attachment)}
+                        className="text-sm text-rose-400 hover:text-rose-300"
+                      >
                         Download
                       </button>
                     </div>

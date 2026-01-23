@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { useQuery } from '@tanstack/react-query';
 import { listPatients, Patient } from '@/lib/api/patients';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Recent Patients component.
@@ -12,6 +13,7 @@ import { listPatients, Patient } from '@/lib/api/patients';
  * Fetches real data from the patients API.
  */
 export default function RecentPatients() {
+  const { t } = useTranslation('common');
   const { data: session } = useSession();
 
   const { data: patientList, isLoading } = useQuery({
@@ -30,10 +32,10 @@ export default function RecentPatients() {
     yesterday.setDate(yesterday.getDate() - 1);
 
     if (date.toDateString() === today.toDateString()) {
-      return 'Today';
+      return t('dashboard.today');
     }
     if (date.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday';
+      return t('dates.yesterday');
     }
     return date.toLocaleDateString('en-CY', { day: '2-digit', month: 'short' });
   };
@@ -41,12 +43,12 @@ export default function RecentPatients() {
   return (
     <div className="bg-slate-900 rounded-lg border border-slate-800">
       <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-white">Recent Patients</h2>
+        <h2 className="text-lg font-semibold text-white">{t('dashboard.recent_patients')}</h2>
         <Link
           href="/patients"
           className="text-sm text-rose-400 hover:text-rose-300 transition-colors"
         >
-          View All
+          {t('dashboard.view_all')}
         </Link>
       </div>
 
@@ -71,7 +73,7 @@ export default function RecentPatients() {
             <svg className="w-10 h-10 mx-auto text-slate-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
-            <p className="text-sm text-slate-400">No patients yet</p>
+            <p className="text-sm text-slate-400">{t('common.no_data')}</p>
             <p className="text-xs text-slate-500 mt-1">Add your first patient to get started</p>
           </div>
         ) : (
@@ -140,7 +142,7 @@ export default function RecentPatients() {
               d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
             />
           </svg>
-          Add New Patient
+          {t('dashboard.add_patient')}
         </Link>
       </div>
     </div>
