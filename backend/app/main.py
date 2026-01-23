@@ -18,6 +18,9 @@ from app.config import settings
 from app.core.audit import AuditMiddleware
 from app.db.session import engine
 
+# Import all models to ensure SQLAlchemy mapper resolution works
+import app.integrations.dicom.mwl_models  # noqa: F401 - ScheduledProcedure for Patient relationship
+
 # Configure logging
 logging.basicConfig(
     level=logging.DEBUG if settings.debug else logging.INFO,

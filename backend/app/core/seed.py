@@ -20,6 +20,7 @@ from app.core.security import hash_password
 from app.db.session import AsyncSessionLocal
 from app.modules.appointment.models import Appointment, AppointmentType, AppointmentStatus, EXPECTED_DURATIONS
 from app.modules.clinic.models import Clinic, User, UserClinicRole
+from app.modules.encounter.models import Encounter  # noqa: F401 - needed for FK resolution
 from app.modules.patient.models import Patient, PatientPII
 
 logger = logging.getLogger(__name__)

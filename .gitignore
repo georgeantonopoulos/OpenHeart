@@ -188,3 +188,7 @@ backend/alembic/versions/*.pyc
 # Local scripts
 scripts/local/
 *.local.sh
+
+
+# Playwright MCP
+.playwright-mcp/*

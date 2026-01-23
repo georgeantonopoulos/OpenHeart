@@ -120,11 +120,6 @@ class Patient(Base):
         back_populates="patient",
         cascade="all, delete-orphan",
     )
-    scheduled_procedures: Mapped[list["ScheduledProcedure"]] = relationship(
-        "ScheduledProcedure",
-        back_populates="patient",
-        cascade="all, delete-orphan",
-    )
 
     __table_args__ = (
         Index("idx_patients_clinic_mrn", "clinic_id", "mrn", unique=True),
@@ -234,3 +229,7 @@ class PatientPII(Base):
     __table_args__ = (
         {"comment": "Encrypted PII - separate access control"},
     )
+
+
+# Import related models to ensure SQLAlchemy can resolve relationships
+from app.integrations.dicom.mwl_models import ScheduledProcedure  # noqa: F401, E402
