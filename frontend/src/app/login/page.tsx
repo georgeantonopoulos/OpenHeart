@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { signIn, useSession } from 'next-auth/react';
+import { signIn, signOut, useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 /**
@@ -15,7 +15,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { status } = useSession();
+  const { data: session, status } = useSession();
 
   // Get callback URL from query params or default to dashboard
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
@@ -26,12 +26,17 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated, or sign out if session has errors
   useEffect(() => {
     if (status === 'authenticated') {
-      router.push(callbackUrl);
+      if (session?.error === 'RefreshAccessTokenError') {
+        // Token refresh failed — sign out to clear the stale cookie and break the redirect loop
+        signOut({ redirect: false });
+      } else {
+        router.push(callbackUrl);
+      }
     }
-  }, [status, router, callbackUrl]);
+  }, [status, session, router, callbackUrl]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

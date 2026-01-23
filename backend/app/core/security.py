@@ -52,7 +52,7 @@ legacy_bcrypt = CryptContext(schemes=["bcrypt"], deprecated="auto")
 class TokenPayload(BaseModel):
     """JWT token payload structure."""
 
-    sub: int  # user_id
+    sub: int  # user_id (stored as string in JWT per RFC 7519, coerced to int here)
     email: str
     clinic_id: int
     role: str
@@ -197,7 +197,7 @@ def create_access_token(
     expire = now + timedelta(minutes=settings.jwt_expiry_minutes)
 
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),  # RFC 7519 requires sub to be a string
         "email": email,
         "clinic_id": clinic_id,
         "role": role,
@@ -225,7 +225,7 @@ def create_refresh_token(user_id: int) -> str:
     expire = now + timedelta(days=settings.refresh_token_expiry_days)
 
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),  # RFC 7519 requires sub to be a string
         "jti": str(uuid4()),
         "token_type": "refresh",
         "exp": expire,

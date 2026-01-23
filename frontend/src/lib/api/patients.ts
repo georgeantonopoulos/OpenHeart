@@ -125,7 +125,7 @@ export async function listPatients(
 ): Promise<PatientListResponse> {
   const queryString = buildQueryString(params);
   return apiFetch<PatientListResponse>(
-    `/api/patients${queryString}`,
+    `/api/patients/${queryString}`,
     { method: 'GET' },
     accessToken
   );
@@ -140,7 +140,7 @@ export async function searchPatients(
 ): Promise<PatientListResponse> {
   const queryString = buildQueryString(params as Record<string, string | number | boolean | undefined | null>);
   return apiFetch<PatientListResponse>(
-    `/api/patients/search${queryString}`,
+    `/api/patients/search/${queryString}`,
     { method: 'GET' },
     accessToken
   );
@@ -168,7 +168,7 @@ export async function createPatient(
   data: PatientCreateInput
 ): Promise<Patient> {
   return apiFetch<Patient>(
-    '/api/patients',
+    '/api/patients/',
     {
       method: 'POST',
       body: JSON.stringify(data),

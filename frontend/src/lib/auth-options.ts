@@ -8,7 +8,10 @@
 import { type NextAuthOptions, type User } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 
-// Server-side API URL (for NextAuth authorize which runs in the container)
+// TODO: INTERNAL_API_URL must point to the backend Docker service name (http://backend:8000)
+// when running in Docker. The .env.local previously had http://localhost:8000 which causes
+// ECONNREFUSED because localhost inside a container is the container itself, not the host.
+// If running outside Docker (e.g., `npm run dev` on host), use http://localhost:8000 instead.
 const API_URL = process.env.INTERNAL_API_URL || "http://backend:8000";
 
 interface LoginResponse {

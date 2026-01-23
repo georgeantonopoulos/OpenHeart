@@ -8,6 +8,8 @@ const inter = Inter({
   variable: '--font-inter',
 });
 
+// TODO: No favicon exists in public/ directory. The browser requests /favicon.ico on every page load
+// and receives a 404. Add an appropriate favicon (heart/cardiology themed) to public/favicon.ico.
 export const metadata: Metadata = {
   title: {
     default: 'OpenHeart Cyprus',
