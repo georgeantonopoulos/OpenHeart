@@ -114,6 +114,9 @@ services:
     container_name: openheart-web
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
+      INTERNAL_API_URL: http://backend:8000
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: dev-secret-must-be-at-least-32-characters-long-for-security
       NEXT_PUBLIC_ORTHANC_URL: http://localhost:8042
       NEXT_PUBLIC_OHIF_URL: http://localhost:3001
     volumes:

@@ -189,7 +189,7 @@ from app.modules.encounter.router import router as encounter_router
 
 # Include implemented routers
 app.include_router(auth_router, prefix="/api", tags=["Authentication"])
-app.include_router(cdss_router, prefix="/api/cdss", tags=["CDSS"])
+app.include_router(cdss_router, prefix="/api", tags=["CDSS"])
 app.include_router(notes_router, prefix="/api", tags=["Clinical Notes"])
 app.include_router(patient_router, prefix="/api", tags=["Patients"])
 app.include_router(encounter_router, prefix="/api", tags=["Encounters"])
