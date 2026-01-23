@@ -4,7 +4,6 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import {
-  Calendar,
   ChevronLeft,
   ChevronRight,
   Plus,
@@ -99,7 +98,7 @@ function AppointmentsContent() {
 
   async function handleStartEncounter(appointment: Appointment) {
     try {
-      const result = await startEncounterFromAppointment(
+      await startEncounterFromAppointment(
         session!.accessToken,
         appointment.appointment_id
       );
@@ -109,7 +108,7 @@ function AppointmentsContent() {
     }
   }
 
-  function handleAppointmentClick(appointment: Appointment) {
+  function handleAppointmentClick(_appointment: Appointment) {
     // Could open a detail panel or navigate
   }
 
@@ -167,21 +166,19 @@ function AppointmentsContent() {
           <div className="flex rounded-lg border border-white/10 overflow-hidden">
             <button
               onClick={() => setViewMode('week')}
-              className={`px-3 py-1.5 text-sm ${
-                viewMode === 'week'
-                  ? 'bg-teal-600 text-white'
-                  : 'text-slate-400 hover:text-white'
-              }`}
+              className={`px-3 py-1.5 text-sm ${viewMode === 'week'
+                ? 'bg-teal-600 text-white'
+                : 'text-slate-400 hover:text-white'
+                }`}
             >
               Week
             </button>
             <button
               onClick={() => setViewMode('day')}
-              className={`px-3 py-1.5 text-sm ${
-                viewMode === 'day'
-                  ? 'bg-teal-600 text-white'
-                  : 'text-slate-400 hover:text-white'
-              }`}
+              className={`px-3 py-1.5 text-sm ${viewMode === 'day'
+                ? 'bg-teal-600 text-white'
+                : 'text-slate-400 hover:text-white'
+                }`}
             >
               Day
             </button>
@@ -207,6 +204,8 @@ function AppointmentsContent() {
             appointments={appointments}
             currentDate={currentDate}
             onAppointmentClick={handleAppointmentClick}
+            onCheckIn={handleCheckIn}
+            onStartEncounter={handleStartEncounter}
           />
         ) : (
           <DayView

@@ -5,7 +5,6 @@ import {
   type Appointment,
   getAppointmentStatusColor,
   formatAppointmentType,
-  formatAppointmentStatus,
 } from '@/lib/api/appointments';
 
 interface WeekViewProps {
@@ -13,9 +12,11 @@ interface WeekViewProps {
   currentDate: Date;
   onAppointmentClick: (appointment: Appointment) => void;
   onSlotClick?: (date: Date, hour: number) => void;
+  onCheckIn?: (appointment: Appointment) => void;
+  onStartEncounter?: (appointment: Appointment) => void;
 }
 
-const HOURS = Array.from({ length: 10 }, (_, i) => i + 8); // 8:00 - 17:00
+const HOURS = Array.from({ length: 15 }, (_, i) => i + 7); // 07:00 - 21:00
 
 function getWeekDays(date: Date): Date[] {
   const start = new Date(date);
@@ -43,6 +44,8 @@ export default function WeekView({
   currentDate,
   onAppointmentClick,
   onSlotClick,
+  onCheckIn,
+  onStartEncounter,
 }: WeekViewProps) {
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate]);
   const today = new Date();
@@ -64,17 +67,15 @@ export default function WeekView({
           return (
             <div
               key={day.toISOString()}
-              className={`border-l border-white/10 p-2 text-center ${
-                isToday ? 'bg-teal-500/10' : ''
-              }`}
+              className={`border-l border-white/10 p-2 text-center ${isToday ? 'bg-teal-500/10' : ''
+                }`}
             >
               <p className="text-xs text-slate-500">
                 {day.toLocaleDateString('en-US', { weekday: 'short' })}
               </p>
               <p
-                className={`text-lg font-semibold ${
-                  isToday ? 'text-teal-400' : 'text-white'
-                }`}
+                className={`text-lg font-semibold ${isToday ? 'text-teal-400' : 'text-white'
+                  }`}
               >
                 {day.getDate()}
               </p>
@@ -108,28 +109,60 @@ export default function WeekView({
                   onClick={() => onSlotClick?.(day, hour)}
                 >
                   {dayAppointments.map((appt) => (
-                    <button
+                    <div
                       key={appt.appointment_id}
+                      className={`group relative w-full rounded px-1.5 py-0.5 mt-0.5 text-left text-[10px] transition-all hover:ring-1 hover:ring-white/20 ${getAppointmentStatusColor(appt.status)}`}
+                      style={{
+                        minHeight: `${Math.max(24, (appt.duration_minutes / 60) * 48)}px`,
+                      }}
                       onClick={(e) => {
                         e.stopPropagation();
                         onAppointmentClick(appt);
                       }}
-                      className={`w-full rounded px-1.5 py-0.5 text-left text-xs transition-opacity hover:opacity-80 ${getAppointmentStatusColor(appt.status)}`}
-                      style={{
-                        minHeight: `${Math.max(20, (appt.duration_minutes / 60) * 48)}px`,
-                      }}
                     >
-                      <p className="truncate font-medium">
-                        {new Date(appt.start_time).toLocaleTimeString('en-US', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          hour12: false,
-                        })}
-                      </p>
-                      <p className="truncate opacity-80">
-                        {formatAppointmentType(appt.appointment_type)}
-                      </p>
-                    </button>
+                      <div className="flex flex-col h-full justify-between">
+                        <div>
+                          <p className="truncate font-bold text-[11px] leading-tight">
+                            {new Date(appt.start_time).toLocaleTimeString('en-US', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              hour12: false,
+                            })}
+                          </p>
+                          <p className="truncate opacity-90 font-medium">
+                            {formatAppointmentType(appt.appointment_type)}
+                          </p>
+                        </div>
+
+                        {/* Quick Actions (only visible if there's enough height or on hover) */}
+                        <div className="hidden group-hover:flex gap-1 mt-1 pb-1">
+                          {(appt.status === 'scheduled' || appt.status === 'confirmed') && onCheckIn && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onCheckIn(appt);
+                              }}
+                              className="px-1.5 py-0.5 rounded bg-amber-500/30 text-white hover:bg-amber-500 transition-colors font-bold text-[9px] uppercase"
+                            >
+                              Check In
+                            </button>
+                          )}
+                          {(appt.status === 'checked_in' || appt.status === 'scheduled' || appt.status === 'confirmed') &&
+                            !appt.encounter_id &&
+                            onStartEncounter && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onStartEncounter(appt);
+                                }}
+                                className="px-1.5 py-0.5 rounded bg-teal-500/30 text-white hover:bg-teal-500 transition-colors font-bold text-[9px] uppercase"
+                              >
+                                Start
+                              </button>
+                            )}
+                        </div>
+                      </div>
+                    </div>
                   ))}
                 </div>
               );

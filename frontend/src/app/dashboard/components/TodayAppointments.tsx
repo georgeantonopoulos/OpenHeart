@@ -1,9 +1,15 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { useQuery } from '@tanstack/react-query';
-import { getTodayAppointments, Appointment } from '@/lib/api/appointments';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  getTodayAppointments,
+  checkInAppointment,
+  startEncounterFromAppointment,
+  type Appointment
+} from '@/lib/api/appointments';
 
 const typeLabels: Record<string, { label: string; color: string }> = {
   consultation: { label: 'Consultation', color: 'bg-purple-500/20 text-purple-300' },
@@ -33,6 +39,8 @@ const statusStyles: Record<string, { bg: string; dot: string }> = {
  */
 export default function TodayAppointments() {
   const { data: session } = useSession();
+  const router = useRouter();
+  const queryClient = useQueryClient();
 
   const { data: appointments = [], isLoading } = useQuery({
     queryKey: ['today-appointments'],
@@ -51,6 +59,26 @@ export default function TodayAppointments() {
   const isPastAppointment = (apt: Appointment) => {
     if (apt.status === 'completed' || apt.status === 'cancelled') return true;
     return new Date(apt.end_time) < now;
+  };
+
+  const handleCheckIn = async (appointmentId: number) => {
+    if (!session?.accessToken) return;
+    try {
+      await checkInAppointment(session.accessToken, appointmentId);
+      queryClient.invalidateQueries({ queryKey: ['today-appointments'] });
+    } catch (err) {
+      console.error('Check-in failed:', err);
+    }
+  };
+
+  const handleStartSession = async (appointmentId: number, patientId: number) => {
+    if (!session?.accessToken) return;
+    try {
+      await startEncounterFromAppointment(session.accessToken, appointmentId);
+      router.push(`/patients/${patientId}`);
+    } catch (err) {
+      console.error('Failed to start session:', err);
+    }
   };
 
   return (
@@ -105,12 +133,10 @@ export default function TodayAppointments() {
             const past = isPastAppointment(apt);
 
             return (
-              <Link
+              <div
                 key={apt.appointment_id}
-                href={`/patients/${apt.patient_id}`}
-                className={`block px-4 py-3 hover:bg-slate-800/50 transition-colors ${statusStyle.bg} ${
-                  past && apt.status !== 'in_progress' ? 'opacity-60' : ''
-                }`}
+                className={`group px-4 py-3 hover:bg-slate-800/50 transition-colors ${statusStyle.bg} ${past && apt.status !== 'in_progress' ? 'opacity-60' : ''
+                  }`}
               >
                 <div className="flex items-center gap-4">
                   {/* Time */}
@@ -123,29 +149,57 @@ export default function TodayAppointments() {
                   {/* Status dot */}
                   <div className={`w-2 h-2 rounded-full ${statusStyle.dot}`} />
 
-                  {/* Patient info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-white font-medium truncate">
-                        {apt.patient_name ?? `Patient #${apt.patient_id}`}
-                      </span>
-                      {apt.gesy_referral_id && (
-                        <span className="px-1.5 py-0.5 text-[10px] bg-teal-900/50 text-teal-300 rounded">
-                          Gesy
+                  {/* Patient info and Actions */}
+                  <div className="flex-1 min-w-0 flex items-center justify-between gap-4">
+                    <Link href={`/patients/${apt.patient_id}`} className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-medium truncate group-hover:text-rose-400 transition-colors">
+                          {apt.patient_name ?? `Patient #${apt.patient_id}`}
                         </span>
+                        {apt.gesy_referral_id && (
+                          <span className="px-1.5 py-0.5 text-[10px] bg-teal-900/50 text-teal-300 rounded">
+                            Gesy
+                          </span>
+                        )}
+                      </div>
+                      {(apt.notes || apt.reason) && (
+                        <p className="text-xs text-slate-400 truncate mt-0.5">{apt.notes || apt.reason}</p>
+                      )}
+                    </Link>
+
+                    {/* Quick Actions */}
+                    <div className="flex items-center gap-2">
+                      {(apt.status === 'scheduled' || apt.status === 'confirmed') && (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleCheckIn(apt.appointment_id);
+                          }}
+                          className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded hover:bg-amber-500 hover:text-white transition-all shadow-sm shadow-amber-900/20"
+                        >
+                          Check In
+                        </button>
+                      )}
+                      {(apt.status === 'checked_in' || apt.status === 'scheduled' || apt.status === 'confirmed') && !apt.encounter_id && (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleStartSession(apt.appointment_id, apt.patient_id);
+                          }}
+                          className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-teal-500/10 text-teal-500 border border-teal-500/20 rounded hover:bg-teal-500 hover:text-white transition-all shadow-sm shadow-teal-900/20"
+                        >
+                          Start Session
+                        </button>
                       )}
                     </div>
-                    {(apt.notes || apt.reason) && (
-                      <p className="text-xs text-slate-400 truncate mt-0.5">{apt.notes || apt.reason}</p>
-                    )}
                   </div>
 
                   {/* Type badge */}
-                  <span className={`px-2 py-1 text-xs rounded ${typeInfo.color}`}>
+                  <span className={`px-2 py-1 text-xs rounded flex-shrink-0 ${typeInfo.color}`}>
                     {typeInfo.label}
                   </span>
                 </div>
-              </Link>
+              </div>
             );
           })
         )}

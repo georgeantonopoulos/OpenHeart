@@ -6,7 +6,7 @@ import {
   formatAppointmentType,
   formatAppointmentStatus,
 } from '@/lib/api/appointments';
-import { Clock, User, MapPin, FileText } from 'lucide-react';
+import { Clock, MapPin, FileText } from 'lucide-react';
 
 interface DayViewProps {
   appointments: Appointment[];
@@ -16,7 +16,7 @@ interface DayViewProps {
   onStartEncounter?: (appointment: Appointment) => void;
 }
 
-const HOURS = Array.from({ length: 10 }, (_, i) => i + 8); // 8:00 - 17:00
+const HOURS = Array.from({ length: 15 }, (_, i) => i + 7); // 07:00 - 21:00
 
 export default function DayView({
   appointments,
@@ -68,7 +68,8 @@ export default function DayView({
                 {hourAppointments.map((appt) => (
                   <div
                     key={appt.appointment_id}
-                    className="rounded-lg border border-white/10 bg-slate-800 p-3"
+                    onClick={() => onAppointmentClick(appt)}
+                    className="cursor-pointer rounded-lg border border-white/10 bg-slate-800 p-3 hover:bg-slate-700/50 transition-colors"
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -147,7 +148,7 @@ export default function DayView({
                                 }}
                                 className="rounded bg-teal-600/20 px-2 py-1 text-xs text-teal-400 hover:bg-teal-600/30"
                               >
-                                Start Encounter
+                                Start Session
                               </button>
                             )}
                         </div>

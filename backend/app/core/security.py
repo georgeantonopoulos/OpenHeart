@@ -298,6 +298,15 @@ async def get_current_user(
             detail="Invalid token type. Expected access token.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Access tokens must carry clinic/role claims for RBAC and RLS
+    if payload.clinic_id is None or payload.role is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid access token: missing required claims.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     redis_client = getattr(request.app.state, "redis", None)
     if redis_client and payload.jti:
         from app.core.redis import get_user_invalidation_time, is_token_blacklisted

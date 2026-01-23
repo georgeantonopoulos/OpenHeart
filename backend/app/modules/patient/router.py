@@ -323,6 +323,7 @@ async def get_patient_timeline(
     timeline = await service.get_patient_timeline(
         patient_id=patient_id,
         clinic_id=user.clinic_id,
+        role=user.role,
         page=page,
         page_size=page_size,
     )
