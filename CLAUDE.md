@@ -55,7 +55,13 @@ cd frontend && npm test
 
 **CDSS Engine:** Located in `backend/app/modules/cardiology/cdss/`. Implements GRACE, CHA₂DS₂-VASc, and HAS-BLED calculators with comprehensive test coverage.
 
-**DICOM Integration:** Uses WADO-RS protocol to communicate with Orthanc server. OHIF Viewer for study viewing. (Infrastructure ready, implementation pending)
+**DICOM Integration:** `backend/app/integrations/dicom/`
+
+- WADO-RS/QIDO-RS protocol for Orthanc queries and DICOM retrieval
+- Study-to-patient linking (`PatientStudyLink` model) with duplicate detection
+- Patient studies retrieval: merges Orthanc queries (via decrypted Cyprus ID) with DB-linked studies
+- Echo SR parsing: extracts measurements from DICOM Structured Reports using 40 LOINC/SNOMED/DCM concept code mappings
+- OHIF Viewer integration for study viewing
 
 ## Coding Standards
 
@@ -80,21 +86,24 @@ cd frontend && npm test
 
 ## Current Implementation Status
 
-| Module           | Status      | Location                                                 |
-| ---------------- | ----------- | -------------------------------------------------------- |
-| CDSS Calculators | Complete    | `backend/app/modules/cardiology/cdss/`                   |
-| Clinical Notes   | Complete    | `backend/app/modules/notes/`                             |
-| Security Core    | Partial     | `backend/app/core/` (design complete, endpoints pending) |
-| Patient Models   | Models Only | `backend/app/modules/patient/` (no API)                  |
-| User Management  | Not Started | See `agents/user_management_plan.md`                     |
-| Frontend App     | Shell Only  | Login page placeholder, no API integration               |
+| Module            | Status      | Location                                                          |
+| ----------------- | ----------- | ----------------------------------------------------------------- |
+| CDSS Calculators  | Complete    | `backend/app/modules/cardiology/cdss/`                            |
+| Clinical Notes    | Complete    | `backend/app/modules/notes/`                                      |
+| Security Core     | Partial     | `backend/app/core/` (migrations + seed done, endpoints pending)   |
+| Audit Logging     | Complete    | `backend/app/core/audit.py` (note access + CDSS persist to DB)    |
+| DICOM Integration | Complete    | `backend/app/integrations/dicom/` (linking, retrieval, SR parsing)|
+| Patient Models    | Models Only | `backend/app/modules/patient/` (no API)                           |
+| User Management   | Not Started | See `agents/user_management_plan.md`                              |
+| Frontend App      | Functional  | Login wired via NextAuth → FastAPI, dashboard pages exist         |
 
-**Critical Gap:** User authentication and management is designed but not implemented. See [agents/user_management_plan.md](agents/user_management_plan.md) for the complete implementation plan.
+**Critical Gap:** User authentication DB tables and seed data exist, but management API endpoints are not implemented. See [agents/user_management_plan.md](agents/user_management_plan.md) for the remaining work.
 
 ## Security Requirements (GDPR)
 
 - PII must be isolated and encrypted at rest (Fernet encryption in `core/encryption.py`)
-- All data access logged to `security_audit` table
+- All data access logged to `security_audit` table via fire-and-forget async tasks
+- Note access and CDSS calculations logged to dedicated audit tables (`note_access_log`, `cdss_audit_log`)
 - Audit captures: User ID, IP address, timestamp, resource accessed
 - MFA required for clinical staff (TOTP support designed, implementation pending)
 - Password hashing with Argon2id (planned upgrade from bcrypt)
@@ -116,7 +125,7 @@ Defined in `backend/app/core/permissions.py`:
 
 **Gesy:** Use adapter pattern with `IGesyProvider` interface - allows mock implementation for testing and real API swap later. Mock provider implemented in `backend/app/integrations/gesy/`.
 
-**DICOM:** Orthanc server at port 8042 (API) and 4242 (DICOM protocol). Integration stub exists but implementation pending.
+**DICOM:** Orthanc server at port 8042 (API) and 4242 (DICOM protocol). Study linking persists to `patient_study_links` table. Echo SR parsing uses pydicom + concept code mappings. Patient studies merge Orthanc QIDO-RS queries with DB-linked records.
 
 **FHIR:** Stub exists at `backend/app/integrations/fhir/`, implementation pending.
 
@@ -127,6 +136,19 @@ Defined in `backend/app/core/permissions.py`:
 - Audit middleware logs all requests automatically
 - Health check at `/health` probes all services
 - API docs at `http://localhost:8000/docs`
+
+## Database Migrations
+
+Alembic migration chain in `backend/alembic/versions/`:
+
+- `0001` - Core tables (patients, users, clinics, encounters, notes, note_access_log, security_audit)
+- `0002` - CDSS module tables
+- `0003` - Appointments
+- `0004` - Auth support tables (user_invitations, password_reset_tokens, user_sessions)
+- `0005` - CDSS audit log (range-partitioned by year, 2024-2040)
+- `0006` - Patient study links (DICOM study-to-patient linking)
+
+**Dev Seed:** On startup in `development` environment, `app/core/seed.py` creates a clinic, 4 users (`admin@openheart.example.com` / `DevAdmin123!`, plus cardiologist/nurse/reception), sample patients, and appointments. Idempotent — skips if data exists.
 
 ## SQLAlchemy 2.0 Notes
 
