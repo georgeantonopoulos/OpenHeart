@@ -1,6 +1,3 @@
-// TODO: This page calls /api/procedures/scheduled which returns 500 because the
-// `scheduled_procedures` table has no Alembic migration. The endpoint works structurally
-// but the database table doesn't exist. See backend mwl_router.py.
 "use client";
 
 import { useState, useEffect, Suspense } from "react";

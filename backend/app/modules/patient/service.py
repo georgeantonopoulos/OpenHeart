@@ -10,7 +10,7 @@ Handles business logic for patient management including:
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Sequence
 
 from sqlalchemy import and_, desc, func, or_, select
@@ -26,10 +26,19 @@ from app.core.encryption import (
     mask_pii,
 )
 from app.db.session import set_tenant_context
-from app.modules.patient.models import Patient, PatientPII, PatientStatus
+from app.modules.patient.models import (
+    ErasureRequestStatus,
+    GDPRErasureRequest,
+    Patient,
+    PatientPII,
+    PatientStatus,
+)
 from app.modules.patient.schemas import (
     Address,
     EmergencyContact,
+    ErasureRequestCreate,
+    ErasureRequestEvaluate,
+    ErasureRequestResponse,
     PatientCreate,
     PatientResponse,
     PatientSearchQuery,
@@ -132,9 +141,10 @@ class PatientService:
             emergency_contact_encrypted=encrypt_pii_optional(emergency_json),
         )
         self.db.add(pii)
+        patient.pii = pii
 
         await self.db.commit()
-        await self.db.refresh(patient)
+        await self.db.refresh(patient, ["pii"])
 
         return patient
 
@@ -289,20 +299,22 @@ class PatientService:
         patient_id: int,
         user_id: int,
         clinic_id: int,
+        reason: Optional[str] = None,
     ) -> bool:
         """
-        Soft-delete a patient (GDPR anonymization).
+        Tier 1: Administrative deactivation.
 
-        The patient record is retained for medical record keeping
-        but marked as deleted and PII can be anonymized.
+        Marks patient as inactive. PII remains encrypted and recoverable.
+        This is reversible via reactivate_patient().
 
         Args:
             patient_id: Patient ID
-            user_id: Deleting user's ID
+            user_id: Deactivating user's ID
             clinic_id: Clinic ID for RLS
+            reason: Why the patient is being deactivated
 
         Returns:
-            True if deleted, False if not found
+            True if deactivated, False if not found
         """
         await set_tenant_context(self.db, clinic_id)
 
@@ -311,11 +323,62 @@ class PatientService:
             return False
 
         patient.is_deleted = True
-        patient.deleted_at = datetime.utcnow()
+        patient.deleted_at = datetime.now(timezone.utc)
         patient.status = PatientStatus.INACTIVE.value
+        patient.deactivation_reason = reason
 
         await self.db.commit()
         return True
+
+    async def reactivate_patient(
+        self,
+        patient_id: int,
+        user_id: int,
+        clinic_id: int,
+    ) -> Optional[Patient]:
+        """
+        Reverse a Tier 1 deactivation.
+
+        Cannot reactivate if PII has been anonymized (Tier 2 executed).
+
+        Args:
+            patient_id: Patient ID
+            user_id: Reactivating user's ID
+            clinic_id: Clinic ID for RLS
+
+        Returns:
+            Reactivated patient, or None if not found/not eligible
+        """
+        await set_tenant_context(self.db, clinic_id)
+
+        # Fetch including deleted patients
+        query = select(Patient).where(
+            and_(
+                Patient.patient_id == patient_id,
+                Patient.clinic_id == clinic_id,
+                Patient.is_deleted == True,  # noqa: E712
+            )
+        ).options(selectinload(Patient.pii))
+
+        result = await self.db.execute(query)
+        patient = result.scalar_one_or_none()
+
+        if not patient:
+            return None
+
+        # Cannot reactivate if PII was anonymized
+        if patient.pii and patient.pii.anonymized_at:
+            return None
+
+        patient.is_deleted = False
+        patient.deleted_at = None
+        patient.status = PatientStatus.ACTIVE.value
+        patient.deactivation_reason = None
+        patient.updated_at = datetime.now(timezone.utc)
+
+        await self.db.commit()
+        await self.db.refresh(patient)
+        return patient
 
     # ========================================================================
     # Search
@@ -533,3 +596,349 @@ class PatientService:
             "page": page,
             "page_size": page_size,
         }
+
+    # ========================================================================
+    # GDPR Erasure Requests (Tier 2)
+    # ========================================================================
+
+    COOLOFF_HOURS = 72  # Mandatory delay between approval and execution
+
+    async def create_erasure_request(
+        self,
+        patient_id: int,
+        data: ErasureRequestCreate,
+        user_id: int,
+        clinic_id: int,
+    ) -> Optional[GDPRErasureRequest]:
+        """
+        Submit a GDPR Article 17 erasure request on behalf of a patient.
+
+        Args:
+            patient_id: Patient ID
+            data: Request details (method, legal basis)
+            user_id: Staff member submitting on behalf of patient
+            clinic_id: Clinic ID for RLS
+
+        Returns:
+            Created erasure request, or None if patient not found
+        """
+        await set_tenant_context(self.db, clinic_id)
+
+        # Verify patient exists (including deactivated patients)
+        query = select(Patient).where(
+            and_(
+                Patient.patient_id == patient_id,
+                Patient.clinic_id == clinic_id,
+            )
+        )
+        result = await self.db.execute(query)
+        patient = result.scalar_one_or_none()
+        if not patient:
+            return None
+
+        # Check for existing pending/approved request
+        existing_query = select(GDPRErasureRequest).where(
+            and_(
+                GDPRErasureRequest.patient_id == patient_id,
+                GDPRErasureRequest.evaluation_status.in_([
+                    ErasureRequestStatus.PENDING.value,
+                    ErasureRequestStatus.APPROVED.value,
+                ]),
+            )
+        )
+        existing = await self.db.execute(existing_query)
+        if existing.scalar_one_or_none():
+            logger.warning(
+                f"Erasure request already exists for patient {patient_id}"
+            )
+            return None
+
+        erasure_request = GDPRErasureRequest(
+            patient_id=patient_id,
+            requested_by=user_id,
+            request_method=data.request_method.value,
+            legal_basis_cited=data.legal_basis_cited.value,
+            evaluation_status=ErasureRequestStatus.PENDING.value,
+        )
+        self.db.add(erasure_request)
+        await self.db.commit()
+        await self.db.refresh(erasure_request)
+
+        return erasure_request
+
+    async def get_erasure_requests(
+        self,
+        patient_id: int,
+        clinic_id: int,
+    ) -> Sequence[GDPRErasureRequest]:
+        """Get all erasure requests for a patient."""
+        await set_tenant_context(self.db, clinic_id)
+
+        query = (
+            select(GDPRErasureRequest)
+            .join(Patient)
+            .where(
+                and_(
+                    GDPRErasureRequest.patient_id == patient_id,
+                    Patient.clinic_id == clinic_id,
+                )
+            )
+            .order_by(desc(GDPRErasureRequest.requested_at))
+        )
+
+        result = await self.db.execute(query)
+        return result.scalars().all()
+
+    async def evaluate_erasure_request(
+        self,
+        request_id: int,
+        data: ErasureRequestEvaluate,
+        user_id: int,
+    ) -> Optional[GDPRErasureRequest]:
+        """
+        Approve or deny an erasure request.
+
+        If approved, sets a 72-hour cooling-off period before execution.
+
+        Args:
+            request_id: Erasure request ID
+            data: Evaluation decision
+            user_id: Admin/DPO evaluating
+
+        Returns:
+            Updated request, or None if not found/not pending
+        """
+        query = select(GDPRErasureRequest).where(
+            and_(
+                GDPRErasureRequest.request_id == request_id,
+                GDPRErasureRequest.evaluation_status == ErasureRequestStatus.PENDING.value,
+            )
+        )
+        result = await self.db.execute(query)
+        erasure_request = result.scalar_one_or_none()
+        if not erasure_request:
+            return None
+
+        now = datetime.now(timezone.utc)
+        erasure_request.evaluated_by = user_id
+        erasure_request.evaluated_at = now
+        erasure_request.evaluation_status = data.decision.value
+
+        if data.decision == ErasureRequestStatus.APPROVED:
+            erasure_request.cooloff_expires_at = now + timedelta(hours=self.COOLOFF_HOURS)
+        else:
+            erasure_request.denial_reason = data.denial_reason
+
+        await self.db.commit()
+        await self.db.refresh(erasure_request)
+        return erasure_request
+
+    async def cancel_approved_erasure(
+        self,
+        request_id: int,
+        user_id: int,
+        reason: str,
+    ) -> Optional[GDPRErasureRequest]:
+        """
+        Cancel an approved erasure during the 72-hour cooling-off.
+
+        Only valid while cooloff_expires_at has not passed.
+
+        Args:
+            request_id: Erasure request ID
+            user_id: User cancelling
+            reason: Why the erasure is being cancelled
+
+        Returns:
+            Updated request, or None if not found/not in cooloff
+        """
+        query = select(GDPRErasureRequest).where(
+            and_(
+                GDPRErasureRequest.request_id == request_id,
+                GDPRErasureRequest.evaluation_status == ErasureRequestStatus.APPROVED.value,
+            )
+        )
+        result = await self.db.execute(query)
+        erasure_request = result.scalar_one_or_none()
+        if not erasure_request:
+            return None
+
+        # Verify still within cooling-off period
+        now = datetime.now(timezone.utc)
+        if erasure_request.cooloff_expires_at and now >= erasure_request.cooloff_expires_at:
+            logger.warning(
+                f"Cannot cancel erasure {request_id}: cooling-off expired"
+            )
+            return None
+
+        erasure_request.evaluation_status = ErasureRequestStatus.CANCELLED.value
+        erasure_request.cancelled_at = now
+        erasure_request.cancellation_reason = reason
+
+        await self.db.commit()
+        await self.db.refresh(erasure_request)
+        return erasure_request
+
+    async def execute_anonymization(
+        self,
+        request_id: int,
+        user_id: int,
+        clinic_id: int,
+    ) -> Optional[dict]:
+        """
+        Tier 2: Execute PII anonymization after cooling-off period.
+
+        Irreversibly overwrites encrypted PII fields with anonymized values.
+        Clinical notes are LEFT INTACT per Article 17(3)(c) healthcare exemption.
+
+        Args:
+            request_id: Approved erasure request ID
+            user_id: System admin executing
+            clinic_id: Clinic ID for RLS
+
+        Returns:
+            Summary of anonymized fields, or None if not eligible
+        """
+        # Fetch the approved request
+        query = select(GDPRErasureRequest).where(
+            and_(
+                GDPRErasureRequest.request_id == request_id,
+                GDPRErasureRequest.evaluation_status == ErasureRequestStatus.APPROVED.value,
+            )
+        )
+        result = await self.db.execute(query)
+        erasure_request = result.scalar_one_or_none()
+        if not erasure_request:
+            return None
+
+        # Verify cooling-off has elapsed
+        now = datetime.now(timezone.utc)
+        if erasure_request.cooloff_expires_at and now < erasure_request.cooloff_expires_at:
+            logger.warning(
+                f"Cannot execute erasure {request_id}: "
+                f"cooling-off expires at {erasure_request.cooloff_expires_at}"
+            )
+            return None
+
+        await set_tenant_context(self.db, clinic_id)
+
+        # Fetch patient with PII
+        patient_query = select(Patient).where(
+            and_(
+                Patient.patient_id == erasure_request.patient_id,
+                Patient.clinic_id == clinic_id,
+            )
+        ).options(selectinload(Patient.pii))
+
+        patient_result = await self.db.execute(patient_query)
+        patient = patient_result.scalar_one_or_none()
+        if not patient or not patient.pii:
+            return None
+
+        # Anonymize PII fields
+        pii = patient.pii
+        anonymized_fields = []
+
+        if pii.first_name_encrypted:
+            pii.first_name_encrypted = encrypt_pii("REDACTED")
+            anonymized_fields.append("first_name")
+
+        if pii.last_name_encrypted:
+            pii.last_name_encrypted = encrypt_pii("REDACTED")
+            anonymized_fields.append("last_name")
+
+        if pii.middle_name_encrypted:
+            pii.middle_name_encrypted = None
+            anonymized_fields.append("middle_name")
+
+        if pii.cyprus_id_encrypted:
+            pii.cyprus_id_encrypted = None
+            anonymized_fields.append("cyprus_id")
+
+        if pii.arc_number_encrypted:
+            pii.arc_number_encrypted = None
+            anonymized_fields.append("arc_number")
+
+        if pii.phone_encrypted:
+            pii.phone_encrypted = None
+            anonymized_fields.append("phone")
+
+        if pii.email_encrypted:
+            pii.email_encrypted = None
+            anonymized_fields.append("email")
+
+        if pii.address_encrypted:
+            pii.address_encrypted = None
+            anonymized_fields.append("address")
+
+        if pii.emergency_contact_encrypted:
+            pii.emergency_contact_encrypted = None
+            anonymized_fields.append("emergency_contact")
+
+        pii.anonymized_at = now
+
+        # Ensure patient is marked as deleted/inactive
+        if not patient.is_deleted:
+            patient.is_deleted = True
+            patient.deleted_at = now
+            patient.status = PatientStatus.INACTIVE.value
+            patient.deactivation_reason = "GDPR Article 17 erasure executed"
+
+        # Update erasure request
+        execution_details = {
+            "anonymized_fields": anonymized_fields,
+            "executed_by": user_id,
+            "clinical_notes_preserved": True,
+            "article_17_3_c_exemption": "Healthcare records retained",
+        }
+        erasure_request.evaluation_status = ErasureRequestStatus.EXECUTED.value
+        erasure_request.executed_at = now
+        erasure_request.execution_details = execution_details
+
+        await self.db.commit()
+
+        logger.info(
+            f"GDPR erasure executed for patient {erasure_request.patient_id}: "
+            f"anonymized {len(anonymized_fields)} PII fields"
+        )
+
+        return execution_details
+
+    def build_erasure_response(
+        self,
+        request: GDPRErasureRequest,
+    ) -> ErasureRequestResponse:
+        """Build a response object for an erasure request."""
+        now = datetime.now(timezone.utc)
+
+        is_in_cooloff = (
+            request.evaluation_status == ErasureRequestStatus.APPROVED.value
+            and request.cooloff_expires_at is not None
+            and now < request.cooloff_expires_at
+        )
+        can_execute = (
+            request.evaluation_status == ErasureRequestStatus.APPROVED.value
+            and request.cooloff_expires_at is not None
+            and now >= request.cooloff_expires_at
+        )
+
+        return ErasureRequestResponse(
+            request_id=request.request_id,
+            patient_id=request.patient_id,
+            requested_at=request.requested_at,
+            requested_by=request.requested_by,
+            request_method=request.request_method,
+            legal_basis_cited=request.legal_basis_cited,
+            evaluation_status=request.evaluation_status,
+            evaluated_by=request.evaluated_by,
+            evaluated_at=request.evaluated_at,
+            denial_reason=request.denial_reason,
+            retention_expiry_date=request.retention_expiry_date,
+            cooloff_expires_at=request.cooloff_expires_at,
+            cancelled_at=request.cancelled_at,
+            cancellation_reason=request.cancellation_reason,
+            executed_at=request.executed_at,
+            execution_details=request.execution_details,
+            is_in_cooloff=is_in_cooloff,
+            can_execute=can_execute,
+        )

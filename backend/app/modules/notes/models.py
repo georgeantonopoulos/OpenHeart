@@ -7,7 +7,7 @@ and comprehensive audit logging for GDPR compliance.
 
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import (
     Boolean,
@@ -119,13 +119,13 @@ class ClinicalNote(Base):
     )
 
     # Relationships
-    versions: Mapped["List[NoteVersion]"] = relationship(
+    versions: Mapped[List["NoteVersion"]] = relationship(
         "NoteVersion",
         back_populates="note",
         cascade="all, delete-orphan",
         order_by="NoteVersion.version_number.desc()",
     )
-    attachments: Mapped["List[NoteAttachment]"] = relationship(
+    attachments: Mapped[List["NoteAttachment"]] = relationship(
         "NoteAttachment",
         back_populates="note",
         cascade="all, delete-orphan",

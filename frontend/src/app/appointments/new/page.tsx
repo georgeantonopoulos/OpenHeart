@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import {
@@ -10,6 +10,8 @@ import {
   AlertTriangle,
   Loader2,
   CheckCircle,
+  Search,
+  X,
 } from 'lucide-react';
 import {
   createAppointment,
@@ -17,6 +19,7 @@ import {
   type AppointmentType,
   type AppointmentCreateInput,
 } from '@/lib/api/appointments';
+import { searchPatients, type Patient } from '@/lib/api/patients';
 
 const APPOINTMENT_TYPES: { value: AppointmentType; label: string }[] = [
   { value: 'consultation', label: 'Consultation' },
@@ -38,8 +41,16 @@ function NewAppointmentContent() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Form state
+  // Patient search state
   const [patientId, setPatientId] = useState('');
+  const [patientSearch, setPatientSearch] = useState('');
+  const [patientResults, setPatientResults] = useState<Patient[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Form state
   const [appointmentType, setAppointmentType] = useState<AppointmentType>('consultation');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
@@ -52,6 +63,55 @@ function NewAppointmentContent() {
   // Duration warning
   const expectedDuration = EXPECTED_DURATIONS[appointmentType] || 30;
   const showDurationWarning = duration < Math.floor(expectedDuration * 0.75);
+
+  // Debounced patient search
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (!patientSearch.trim() || !session?.accessToken) {
+      setPatientResults([]);
+      setShowResults(false);
+      return;
+    }
+
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        setSearchLoading(true);
+        const result = await searchPatients(session.accessToken, {
+          q: patientSearch.trim(),
+          page_size: 5,
+        });
+        setPatientResults(result.items);
+        setShowResults(true);
+      } catch {
+        setPatientResults([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [patientSearch, session?.accessToken]);
+
+  function selectPatient(patient: Patient) {
+    setSelectedPatient(patient);
+    setPatientId(String(patient.patient_id));
+    setPatientSearch('');
+    setShowResults(false);
+    setPatientResults([]);
+  }
+
+  function clearPatient() {
+    setSelectedPatient(null);
+    setPatientId('');
+    setPatientSearch('');
+  }
 
   function handleTypeChange(type: AppointmentType) {
     setAppointmentType(type);
@@ -181,15 +241,67 @@ function NewAppointmentContent() {
 
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
-                Patient ID
+                Patient
               </label>
-              <input
-                type="number"
-                value={patientId}
-                onChange={(e) => setPatientId(e.target.value)}
-                placeholder="Enter patient ID"
-                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder-slate-500 focus:border-teal-500 focus:outline-none"
-              />
+              {selectedPatient ? (
+                <div className="flex items-center justify-between rounded-lg border border-teal-500/50 bg-teal-500/10 px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-white">
+                      {selectedPatient.first_name} {selectedPatient.last_name}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      MRN: {selectedPatient.mrn}
+                      {selectedPatient.birth_date && ` • DOB: ${new Date(selectedPatient.birth_date).toLocaleDateString('en-GB')}`}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearPatient}
+                    className="p-1 text-slate-400 hover:text-white"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={patientSearch}
+                    onChange={(e) => setPatientSearch(e.target.value)}
+                    placeholder="Search by name or MRN..."
+                    className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-white placeholder-slate-500 focus:border-teal-500 focus:outline-none"
+                  />
+                  {searchLoading && (
+                    <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400" />
+                  )}
+                  {showResults && patientResults.length > 0 && (
+                    <div className="absolute z-10 mt-1 w-full rounded-lg border border-white/10 bg-slate-900 shadow-lg">
+                      {patientResults.map((p) => (
+                        <button
+                          key={p.patient_id}
+                          type="button"
+                          onClick={() => selectPatient(p)}
+                          className="w-full px-3 py-2 text-left hover:bg-white/5 first:rounded-t-lg last:rounded-b-lg"
+                        >
+                          <p className="text-sm font-medium text-white">
+                            {p.first_name} {p.last_name}
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            MRN: {p.mrn}
+                            {p.birth_date && ` • DOB: ${new Date(p.birth_date).toLocaleDateString('en-GB')}`}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {showResults && patientResults.length === 0 && patientSearch.trim() && !searchLoading && (
+                    <div className="absolute z-10 mt-1 w-full rounded-lg border border-white/10 bg-slate-900 p-3 text-center">
+                      <p className="text-sm text-slate-400">No patients found</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <button

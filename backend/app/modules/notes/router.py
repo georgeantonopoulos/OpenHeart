@@ -9,6 +9,7 @@ Provides RESTful endpoints for clinical note management with:
 - GDPR-compliant access logging
 """
 
+import logging
 import time
 from typing import Annotated, Optional
 
@@ -46,6 +47,7 @@ from app.modules.notes.schemas import (
 from app.modules.notes.service import NoteService
 
 router = APIRouter(prefix="/notes", tags=["Clinical Notes"])
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -90,21 +92,24 @@ async def create_note(
         clinic_id=user.clinic_id,
     )
 
-    # Log access
+    # Log access (non-fatal: note is already persisted)
     duration_ms = int((time.time() - start_time) * 1000)
-    await service.log_access(
-        note_id=note.note_id,
-        action=NoteAccessAction.CREATE,
-        user_id=user.sub,
-        user_email=user.email,
-        user_role=user.role,
-        clinic_id=user.clinic_id,
-        ip_address=request.client.host if request.client else "unknown",
-        request_path=str(request.url.path),
-        request_method=request.method,
-        response_status=201,
-        duration_ms=duration_ms,
-    )
+    try:
+        await service.log_access(
+            note_id=note.note_id,
+            action=NoteAccessAction.CREATE,
+            user_id=user.sub,
+            user_email=user.email,
+            user_role=user.role,
+            clinic_id=user.clinic_id,
+            ip_address=request.client.host if request.client else "0.0.0.0",
+            request_path=str(request.url.path),
+            request_method=request.method,
+            response_status=201,
+            duration_ms=duration_ms,
+        )
+    except Exception:
+        logger.warning("Failed to log note creation access", exc_info=True)
 
     # Get current version content
     versions = await service.get_all_versions(note.note_id, user.clinic_id)
@@ -230,7 +235,7 @@ async def get_note(
         user_email=user.email,
         user_role=user.role,
         clinic_id=user.clinic_id,
-        ip_address=request.client.host if request.client else "unknown",
+        ip_address=request.client.host if request.client else "0.0.0.0",
         request_path=str(request.url.path),
         request_method=request.method,
         response_status=200,
@@ -342,7 +347,7 @@ async def update_note(
         user_email=user.email,
         user_role=user.role,
         clinic_id=user.clinic_id,
-        ip_address=request.client.host if request.client else "unknown",
+        ip_address=request.client.host if request.client else "0.0.0.0",
         request_path=str(request.url.path),
         request_method=request.method,
         response_status=200,
@@ -478,7 +483,7 @@ async def get_version(
         user_email=user.email,
         user_role=user.role,
         clinic_id=user.clinic_id,
-        ip_address=request.client.host if request.client else "unknown",
+        ip_address=request.client.host if request.client else "0.0.0.0",
         request_path=str(request.url.path),
         request_method=request.method,
         response_status=200,
@@ -643,7 +648,7 @@ async def download_attachment(
         user_email=user.email,
         user_role=user.role,
         clinic_id=user.clinic_id,
-        ip_address=request.client.host if request.client else "unknown",
+        ip_address=request.client.host if request.client else "0.0.0.0",
         request_path=str(request.url.path),
         request_method=request.method,
         response_status=200,
@@ -741,7 +746,7 @@ async def search_notes(
         user_email=user.email,
         user_role=user.role,
         clinic_id=user.clinic_id,
-        ip_address=request.client.host if request.client else "unknown",
+        ip_address=request.client.host if request.client else "0.0.0.0",
         request_path=str(request.url.path),
         request_method=request.method,
         response_status=200,

@@ -73,6 +73,12 @@ class Permission(str, Enum):
     # Audit permissions
     AUDIT_READ = "audit:read"
 
+    # GDPR Erasure permissions
+    ERASURE_REQUEST = "erasure:request"  # Submit erasure request on behalf of patient
+    ERASURE_EVALUATE = "erasure:evaluate"  # Approve/deny erasure requests
+    ERASURE_EXECUTE = "erasure:execute"  # Execute anonymization after approval
+    ERASURE_VIEW = "erasure:view"  # View erasure request history
+
     # Administration
     USER_MANAGE = "user:manage"
     CLINIC_MANAGE = "clinic:manage"
@@ -113,6 +119,8 @@ ROLE_PERMISSIONS: dict[str, set[Permission]] = {
         Permission.APPOINTMENT_READ,
         Permission.APPOINTMENT_WRITE,
         Permission.APPOINTMENT_DELETE,
+        # GDPR (can submit erasure requests on behalf of patients)
+        Permission.ERASURE_REQUEST,
     },
     "nurse": {
         # Limited clinical access
@@ -147,6 +155,8 @@ ROLE_PERMISSIONS: dict[str, set[Permission]] = {
         Permission.APPOINTMENT_READ,
         Permission.APPOINTMENT_WRITE,
         Permission.APPOINTMENT_DELETE,
+        # GDPR (can submit erasure requests received from patients)
+        Permission.ERASURE_REQUEST,
     },
     "auditor": {
         # Read-only audit access
@@ -154,6 +164,7 @@ ROLE_PERMISSIONS: dict[str, set[Permission]] = {
         Permission.PATIENT_READ,
         Permission.ENCOUNTER_READ,
         Permission.NOTE_READ,
+        Permission.ERASURE_VIEW,
     },
     "billing_staff": {
         # Billing-focused access

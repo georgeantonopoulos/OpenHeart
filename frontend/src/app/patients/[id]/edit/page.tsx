@@ -1,41 +1,53 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
-import { useMutation } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { createPatient, PatientCreateInput } from '@/lib/api/patients';
+import { getPatient, updatePatient, PatientUpdateInput } from '@/lib/api/patients';
 import { ApiClientError } from '@/lib/api/client';
 
-/**
- * New Patient Form Page.
- *
- * Multi-step form for registering a new patient with:
- * - Basic demographics
- * - Cyprus identifiers (ID/ARC)
- * - Contact information
- * - Optional Gesy details
- */
-export default function NewPatientPage() {
+export default function EditPatientPage() {
   const { data: session } = useSession();
+  const params = useParams();
   const router = useRouter();
+  const patientId = Number(params.id);
 
-  // Form state
-  const [formData, setFormData] = useState<PatientCreateInput>({
-    first_name: '',
-    last_name: '',
-    birth_date: '',
-    gender: 'unknown',
-  });
+  const [formData, setFormData] = useState<PatientUpdateInput>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [initialized, setInitialized] = useState(false);
 
-  // Create mutation
+  // Fetch existing patient data
+  const { data: patient, isLoading } = useQuery({
+    queryKey: ['patient', patientId],
+    queryFn: () => getPatient(session?.accessToken || '', patientId),
+    enabled: !!session?.accessToken && !!patientId,
+  });
+
+  // Pre-populate form when patient data loads
+  useEffect(() => {
+    if (patient && !initialized) {
+      setFormData({
+        first_name: patient.first_name || '',
+        last_name: patient.last_name || '',
+        middle_name: patient.middle_name || '',
+        gender: patient.gender,
+        phone: patient.phone || '',
+        email: patient.email || '',
+        gesy_beneficiary_id: patient.gesy_beneficiary_id || '',
+        referring_physician: patient.referring_physician || '',
+      });
+      setInitialized(true);
+    }
+  }, [patient, initialized]);
+
+  // Update mutation
   const mutation = useMutation({
-    mutationFn: (data: PatientCreateInput) =>
-      createPatient(session?.accessToken || '', data),
-    onSuccess: (patient) => {
-      router.push(`/patients/${patient.patient_id}`);
+    mutationFn: (data: PatientUpdateInput) =>
+      updatePatient(session?.accessToken || '', patientId, data),
+    onSuccess: () => {
+      router.push(`/patients/${patientId}`);
     },
     onError: (error: Error) => {
       const message = error instanceof ApiClientError ? error.detail : error.message;
@@ -43,21 +55,16 @@ export default function NewPatientPage() {
     },
   });
 
-  // Form validation
+  // Validation
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.first_name.trim()) {
+    if (formData.first_name !== undefined && !formData.first_name.trim()) {
       newErrors.first_name = 'First name is required';
     }
-    if (!formData.last_name.trim()) {
+    if (formData.last_name !== undefined && !formData.last_name.trim()) {
       newErrors.last_name = 'Last name is required';
     }
-    if (!formData.birth_date) {
-      newErrors.birth_date = 'Date of birth is required';
-    }
-
-    // Phone validation (Cyprus format)
     if (formData.phone && !/^\+357\d{8}$/.test(formData.phone.replace(/[\s\-()]/g, ''))) {
       newErrors.phone = 'Phone must be in Cyprus format: +357 XX XXXXXX';
     }
@@ -66,16 +73,30 @@ export default function NewPatientPage() {
     return Object.keys(newErrors).length === 0;
   };
 
-  // Handle form submit
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validate()) {
-      mutation.mutate(formData);
+      // Only send fields that have changed
+      const updates: PatientUpdateInput = {};
+      if (formData.first_name !== patient?.first_name) updates.first_name = formData.first_name;
+      if (formData.last_name !== patient?.last_name) updates.last_name = formData.last_name;
+      if (formData.middle_name !== (patient?.middle_name || '')) updates.middle_name = formData.middle_name;
+      if (formData.gender !== patient?.gender) updates.gender = formData.gender;
+      if (formData.phone !== (patient?.phone || '')) updates.phone = formData.phone;
+      if (formData.email !== (patient?.email || '')) updates.email = formData.email;
+      if (formData.gesy_beneficiary_id !== (patient?.gesy_beneficiary_id || '')) updates.gesy_beneficiary_id = formData.gesy_beneficiary_id;
+      if (formData.referring_physician !== (patient?.referring_physician || '')) updates.referring_physician = formData.referring_physician;
+
+      if (Object.keys(updates).length === 0) {
+        router.push(`/patients/${patientId}`);
+        return;
+      }
+
+      mutation.mutate(updates);
     }
   };
 
-  // Update form field
-  const updateField = (field: keyof PatientCreateInput, value: string) => {
+  const updateField = (field: keyof PatientUpdateInput, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) {
       setErrors((prev) => {
@@ -86,8 +107,27 @@ export default function NewPatientPage() {
     }
   };
 
-  if (!session) {
-    return null;
+  if (!session) return null;
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-2 border-rose-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  if (!patient) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-white text-lg">Patient not found</p>
+          <Link href="/patients" className="text-rose-400 hover:text-rose-300 mt-2 inline-block">
+            Back to Patients
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -97,15 +137,10 @@ export default function NewPatientPage() {
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center space-x-4">
             <Link
-              href="/patients"
+              href={`/patients/${patientId}`}
               className="text-slate-400 hover:text-slate-200 transition-colors"
             >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -114,7 +149,12 @@ export default function NewPatientPage() {
                 />
               </svg>
             </Link>
-            <h1 className="text-2xl font-bold text-white">New Patient</h1>
+            <div>
+              <h1 className="text-2xl font-bold text-white">Edit Patient</h1>
+              <p className="text-sm text-slate-400">
+                {patient.first_name} {patient.last_name} &bull; {patient.mrn}
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -130,63 +170,46 @@ export default function NewPatientPage() {
 
           {/* Basic Information */}
           <div className="bg-slate-900 rounded-lg border border-slate-800 p-6">
-            <h2 className="text-lg font-semibold text-white mb-4">
-              Basic Information
-            </h2>
-
+            <h2 className="text-lg font-semibold text-white mb-4">Basic Information</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* First Name */}
               <div>
-                <label
-                  htmlFor="first_name"
-                  className="block text-sm font-medium text-slate-300 mb-1"
-                >
+                <label htmlFor="first_name" className="block text-sm font-medium text-slate-300 mb-1">
                   First Name *
                 </label>
                 <input
                   type="text"
                   id="first_name"
-                  value={formData.first_name}
+                  value={formData.first_name || ''}
                   onChange={(e) => updateField('first_name', e.target.value)}
                   className={`w-full px-4 py-2 bg-slate-800 border rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 ${
                     errors.first_name ? 'border-red-500' : 'border-slate-700'
                   }`}
-                  placeholder="Γιώργος / George"
                 />
                 {errors.first_name && (
                   <p className="mt-1 text-xs text-red-400">{errors.first_name}</p>
                 )}
               </div>
 
-              {/* Last Name */}
               <div>
-                <label
-                  htmlFor="last_name"
-                  className="block text-sm font-medium text-slate-300 mb-1"
-                >
+                <label htmlFor="last_name" className="block text-sm font-medium text-slate-300 mb-1">
                   Last Name *
                 </label>
                 <input
                   type="text"
                   id="last_name"
-                  value={formData.last_name}
+                  value={formData.last_name || ''}
                   onChange={(e) => updateField('last_name', e.target.value)}
                   className={`w-full px-4 py-2 bg-slate-800 border rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 ${
                     errors.last_name ? 'border-red-500' : 'border-slate-700'
                   }`}
-                  placeholder="Παπαδόπουλος / Papadopoulos"
                 />
                 {errors.last_name && (
                   <p className="mt-1 text-xs text-red-400">{errors.last_name}</p>
                 )}
               </div>
 
-              {/* Middle Name (optional) */}
               <div>
-                <label
-                  htmlFor="middle_name"
-                  className="block text-sm font-medium text-slate-300 mb-1"
-                >
+                <label htmlFor="middle_name" className="block text-sm font-medium text-slate-300 mb-1">
                   Middle Name
                 </label>
                 <input
@@ -195,37 +218,11 @@ export default function NewPatientPage() {
                   value={formData.middle_name || ''}
                   onChange={(e) => updateField('middle_name', e.target.value)}
                   className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
-                  placeholder="Optional"
                 />
               </div>
 
-              {/* Date of Birth */}
-              <div>
-                <label
-                  htmlFor="birth_date"
-                  className="block text-sm font-medium text-slate-300 mb-1"
-                >
-                  Date of Birth *
-                </label>
-                <input
-                  type="date"
-                  id="birth_date"
-                  value={formData.birth_date}
-                  onChange={(e) => updateField('birth_date', e.target.value)}
-                  className={`w-full px-4 py-2 bg-slate-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-rose-500 ${
-                    errors.birth_date ? 'border-red-500' : 'border-slate-700'
-                  }`}
-                />
-                {errors.birth_date && (
-                  <p className="mt-1 text-xs text-red-400">{errors.birth_date}</p>
-                )}
-              </div>
-
-              {/* Gender */}
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Gender
-                </label>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Gender</label>
                 <div className="flex flex-wrap gap-4">
                   {[
                     { value: 'male', label: 'Male' },
@@ -233,10 +230,7 @@ export default function NewPatientPage() {
                     { value: 'other', label: 'Other' },
                     { value: 'unknown', label: 'Unknown' },
                   ].map((option) => (
-                    <label
-                      key={option.value}
-                      className="flex items-center space-x-2 cursor-pointer"
-                    >
+                    <label key={option.value} className="flex items-center space-x-2 cursor-pointer">
                       <input
                         type="radio"
                         name="gender"
@@ -253,68 +247,12 @@ export default function NewPatientPage() {
             </div>
           </div>
 
-          {/* Cyprus Identifiers */}
-          <div className="bg-slate-900 rounded-lg border border-slate-800 p-6">
-            <h2 className="text-lg font-semibold text-white mb-4">
-              Cyprus Identifiers
-            </h2>
-            <p className="text-sm text-slate-400 mb-4">
-              Provide at least one identifier (Cyprus ID or ARC)
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Cyprus ID */}
-              <div>
-                <label
-                  htmlFor="cyprus_id"
-                  className="block text-sm font-medium text-slate-300 mb-1"
-                >
-                  Cyprus ID Card
-                </label>
-                <input
-                  type="text"
-                  id="cyprus_id"
-                  value={formData.cyprus_id || ''}
-                  onChange={(e) => updateField('cyprus_id', e.target.value.toUpperCase())}
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono"
-                  placeholder="1234567"
-                  maxLength={10}
-                />
-              </div>
-
-              {/* ARC Number */}
-              <div>
-                <label
-                  htmlFor="arc_number"
-                  className="block text-sm font-medium text-slate-300 mb-1"
-                >
-                  ARC Number (Non-citizens)
-                </label>
-                <input
-                  type="text"
-                  id="arc_number"
-                  value={formData.arc_number || ''}
-                  onChange={(e) => updateField('arc_number', e.target.value.toUpperCase())}
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono"
-                  placeholder="ARC number"
-                />
-              </div>
-            </div>
-          </div>
-
           {/* Contact Information */}
           <div className="bg-slate-900 rounded-lg border border-slate-800 p-6">
-            <h2 className="text-lg font-semibold text-white mb-4">
-              Contact Information
-            </h2>
-
+            <h2 className="text-lg font-semibold text-white mb-4">Contact Information</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Phone */}
               <div>
-                <label
-                  htmlFor="phone"
-                  className="block text-sm font-medium text-slate-300 mb-1"
-                >
+                <label htmlFor="phone" className="block text-sm font-medium text-slate-300 mb-1">
                   Mobile Phone
                 </label>
                 <input
@@ -332,12 +270,8 @@ export default function NewPatientPage() {
                 )}
               </div>
 
-              {/* Email */}
               <div>
-                <label
-                  htmlFor="email"
-                  className="block text-sm font-medium text-slate-300 mb-1"
-                >
+                <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-1">
                   Email
                 </label>
                 <input
@@ -354,17 +288,10 @@ export default function NewPatientPage() {
 
           {/* Gesy & Referral */}
           <div className="bg-slate-900 rounded-lg border border-slate-800 p-6">
-            <h2 className="text-lg font-semibold text-white mb-4">
-              Gesy & Referral
-            </h2>
-
+            <h2 className="text-lg font-semibold text-white mb-4">Gesy & Referral</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Gesy Beneficiary ID */}
               <div>
-                <label
-                  htmlFor="gesy_beneficiary_id"
-                  className="block text-sm font-medium text-slate-300 mb-1"
-                >
+                <label htmlFor="gesy_beneficiary_id" className="block text-sm font-medium text-slate-300 mb-1">
                   Gesy Beneficiary ID
                 </label>
                 <input
@@ -377,12 +304,8 @@ export default function NewPatientPage() {
                 />
               </div>
 
-              {/* Referring Physician */}
               <div>
-                <label
-                  htmlFor="referring_physician"
-                  className="block text-sm font-medium text-slate-300 mb-1"
-                >
+                <label htmlFor="referring_physician" className="block text-sm font-medium text-slate-300 mb-1">
                   Referring Physician
                 </label>
                 <input
@@ -400,7 +323,7 @@ export default function NewPatientPage() {
           {/* Form Actions */}
           <div className="flex items-center justify-end space-x-4">
             <Link
-              href="/patients"
+              href={`/patients/${patientId}`}
               className="px-4 py-2 text-slate-300 hover:text-white transition-colors"
             >
               Cancel
@@ -417,24 +340,17 @@ export default function NewPatientPage() {
                     fill="none"
                     viewBox="0 0 24 24"
                   >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path
                       className="opacity-75"
                       fill="currentColor"
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
+                    />
                   </svg>
-                  Creating...
+                  Saving...
                 </>
               ) : (
-                'Create Patient'
+                'Save Changes'
               )}
             </button>
           </div>

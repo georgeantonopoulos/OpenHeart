@@ -227,3 +227,113 @@ class PatientSearchQuery(BaseModel):
     gender: Optional[Gender] = None
     status: Optional[PatientStatus] = Field(default=PatientStatus.ACTIVE)
     gesy_only: bool = Field(default=False, description="Filter to Gesy beneficiaries only")
+
+
+# ============================================================================
+# GDPR Erasure Request Schemas
+# ============================================================================
+
+
+class ErasureRequestMethod(str, Enum):
+    """How the erasure request was received."""
+
+    WRITTEN = "written"
+    EMAIL = "email"
+    PORTAL = "portal"
+    IN_PERSON = "in_person"
+
+
+class ErasureLegalBasis(str, Enum):
+    """Article 17(1) grounds cited by the data subject."""
+
+    NO_LONGER_NECESSARY = "no_longer_necessary"
+    CONSENT_WITHDRAWN = "consent_withdrawn"
+    OBJECTION = "objection"
+    UNLAWFUL_PROCESSING = "unlawful_processing"
+    LEGAL_OBLIGATION = "legal_obligation"
+
+
+class ErasureRequestStatus(str, Enum):
+    """Status of a GDPR erasure request."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    DENIED = "denied"
+    EXECUTED = "executed"
+    CANCELLED = "cancelled"
+
+
+class ErasureRequestCreate(BaseModel):
+    """Schema for submitting a GDPR Article 17 erasure request."""
+
+    request_method: ErasureRequestMethod = Field(
+        ..., description="How the request was received from the data subject"
+    )
+    legal_basis_cited: ErasureLegalBasis = Field(
+        ..., description="Article 17(1) ground cited by the data subject"
+    )
+    notes: Optional[str] = Field(
+        None, max_length=2000, description="Additional context about the request"
+    )
+
+
+class ErasureRequestEvaluate(BaseModel):
+    """Schema for evaluating (approving/denying) an erasure request."""
+
+    decision: ErasureRequestStatus = Field(
+        ..., description="Must be 'approved' or 'denied'"
+    )
+    denial_reason: Optional[str] = Field(
+        None,
+        max_length=2000,
+        description="Required if denied: which Article 17(3) exception applies",
+    )
+
+    @model_validator(mode="after")
+    def validate_decision(self) -> "ErasureRequestEvaluate":
+        if self.decision not in (ErasureRequestStatus.APPROVED, ErasureRequestStatus.DENIED):
+            raise ValueError("Decision must be 'approved' or 'denied'")
+        if self.decision == ErasureRequestStatus.DENIED and not self.denial_reason:
+            raise ValueError("denial_reason is required when denying a request")
+        return self
+
+
+class ErasureRequestCancelBody(BaseModel):
+    """Schema for cancelling an approved erasure during cooling-off."""
+
+    reason: str = Field(
+        ..., min_length=10, max_length=2000,
+        description="Reason for cancelling the approved erasure",
+    )
+
+
+class ErasureRequestResponse(BaseModel):
+    """Response schema for GDPR erasure requests."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    request_id: int
+    patient_id: int
+    requested_at: datetime
+    requested_by: int
+    request_method: str
+    legal_basis_cited: str
+    evaluation_status: str
+    evaluated_by: Optional[int] = None
+    evaluated_at: Optional[datetime] = None
+    denial_reason: Optional[str] = None
+    retention_expiry_date: Optional[date] = None
+    cooloff_expires_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    cancellation_reason: Optional[str] = None
+    executed_at: Optional[datetime] = None
+    execution_details: Optional[dict] = None
+    is_in_cooloff: bool = Field(default=False, description="Whether currently in 72h cooling-off")
+    can_execute: bool = Field(default=False, description="Whether execution is currently allowed")
+
+
+class ErasureRequestListResponse(BaseModel):
+    """Paginated erasure request list response."""
+
+    items: list[ErasureRequestResponse]
+    total: int

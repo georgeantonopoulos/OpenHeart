@@ -19,9 +19,6 @@ from app.db.session import get_db
 from app.integrations.dicom.mwl_models import ImagingModality, ProcedureStatus
 from app.integrations.dicom.mwl_service import MWLService
 
-# TODO: The `scheduled_procedures` table has no Alembic migration. All endpoints in this router
-# return 500 (UndefinedTableError) because the table doesn't exist in the database.
-# Create a migration (0007) to add the scheduled_procedures table before using this router.
 router = APIRouter(prefix="/procedures", tags=["Modality Worklist"])
 
 

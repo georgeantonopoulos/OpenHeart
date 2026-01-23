@@ -13,6 +13,7 @@ import {
   SOAPContent,
 } from '@/lib/api/notes';
 import { getPatient } from '@/lib/api/patients';
+import { ApiClientError } from '@/lib/api/client';
 
 /**
  * New Clinical Note Page.
@@ -51,7 +52,8 @@ export default function NewNotePage() {
       router.push(`/patients/${patientId}/notes/${note.note_id}`);
     },
     onError: (error: Error) => {
-      setErrors({ form: error.message });
+      const message = error instanceof ApiClientError ? error.detail : error.message;
+      setErrors({ form: message });
     },
   });
 

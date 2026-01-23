@@ -4,8 +4,6 @@
  * Handles authentication, MFA, password reset, and invitation operations.
  */
 
-// TODO: This was incorrectly using NEXT_PUBLIC_API_URL directly, which doesn't include /api.
-// The fallback included /api but the env var (http://localhost:8000) did not, causing 404s on MFA/auth endpoints.
 const API_BASE = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api`;
 
 // =============================================================================
