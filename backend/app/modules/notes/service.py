@@ -172,7 +172,10 @@ class NoteService:
         # Fetch page
         offset = (page - 1) * page_size
         query = (
-            base_query.options(selectinload(ClinicalNote.versions))
+            base_query.options(
+                selectinload(ClinicalNote.versions),
+                selectinload(ClinicalNote.attachments),
+            )
             .order_by(desc(ClinicalNote.updated_at))
             .offset(offset)
             .limit(page_size)

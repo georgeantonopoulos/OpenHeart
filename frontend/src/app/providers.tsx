@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SessionProvider } from 'next-auth/react';
 import { useState } from 'react';
+import ActiveEncounterOverlay from '@/components/ActiveEncounterOverlay';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -10,8 +11,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 60 * 1000, // 1 minute
-            refetchOnWindowFocus: false,
+            staleTime: 5 * 1000, // 5 seconds (sensible default for an EMR)
+            refetchOnWindowFocus: true, // Auto-refresh when switching back to tab
           },
         },
       })
@@ -19,7 +20,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <SessionProvider>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        {children}
+        <ActiveEncounterOverlay />
+      </QueryClientProvider>
     </SessionProvider>
   );
 }

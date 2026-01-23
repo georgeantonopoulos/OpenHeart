@@ -39,6 +39,7 @@ export default function PatientProfilePage() {
     queryKey: ['patient-timeline', patientId],
     queryFn: () => getPatientTimeline(session?.accessToken || '', patientId),
     enabled: !!session?.accessToken && !!patientId,
+    refetchOnMount: 'always', // Force refresh when navigating back
   });
 
   if (!session) {

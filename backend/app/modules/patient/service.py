@@ -13,9 +13,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Sequence
 
-from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy import and_, desc, func, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 
 from app.core.encryption import (
     decrypt_pii,
@@ -44,6 +44,11 @@ from app.modules.patient.schemas import (
     PatientSearchQuery,
     PatientUpdate,
 )
+from app.modules.notes.models import ClinicalNote
+from app.modules.encounter.models import Encounter, Vitals
+from app.core.audit import CDSSAuditLog
+from app.integrations.dicom.models import PatientStudyLink
+from app.modules.clinic.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -582,17 +587,147 @@ class PatientService:
         if not patient:
             return {"events": [], "total": 0}
 
-        # Placeholder - will be populated with:
-        # - Encounters
-        # - Clinical notes
-        # - Observations
-        # - CDSS calculations
-        # - DICOM studies
+        events = []
+
+        # 1. Fetch Clinical Notes
+        notes_query = (
+            select(ClinicalNote, User.first_name, User.last_name, User.title)
+            .outerjoin(User, ClinicalNote.created_by == User.user_id)
+            .where(
+                and_(
+                    ClinicalNote.patient_id == patient_id,
+                    ClinicalNote.clinic_id == clinic_id,
+                )
+            )
+            .order_by(desc(ClinicalNote.created_at))
+            .limit(page_size * page)
+        )
+        notes_result = await self.db.execute(notes_query)
+        for note, f_name, l_name, title in notes_result.all():
+            author = f"{title or ''} {f_name or ''} {l_name or ''}".strip() or "Unknown"
+            events.append({
+                "id": f"note_{note.note_id}",
+                "type": "note",
+                "title": f"Clinical Note: {note.title}",
+                "description": f"Type: {note.note_type}",
+                "timestamp": note.created_at.isoformat(),
+                "user_name": author,
+            })
+
+        # 2. Fetch Encounters
+        enc_query = (
+            select(Encounter, User.first_name, User.last_name, User.title)
+            .outerjoin(User, Encounter.attending_physician_id == User.user_id)
+            .where(
+                and_(
+                    Encounter.patient_id == patient_id,
+                    Encounter.clinic_id == clinic_id,
+                )
+            )
+            .order_by(desc(Encounter.scheduled_start))
+            .limit(page_size * page)
+        )
+        enc_result = await self.db.execute(enc_query)
+        for enc, f_name, l_name, title in enc_result.all():
+            provider = f"{title or ''} {f_name or ''} {l_name or ''}".strip() or "Unknown"
+            events.append({
+                "id": f"enc_{enc.encounter_id}",
+                "type": "encounter",
+                "title": f"{enc.encounter_type.title()} Encounter",
+                "description": f"Status: {enc.status}",
+                "timestamp": (enc.actual_start or enc.scheduled_start or enc.created_at).isoformat(),
+                "user_name": provider,
+            })
+
+        # 3. Fetch CDSS Calculations
+        cdss_query = (
+            select(CDSSAuditLog, User.first_name, User.last_name, User.title)
+            .outerjoin(User, CDSSAuditLog.clinician_id == User.user_id)
+            .where(
+                and_(
+                    CDSSAuditLog.patient_id == patient_id,
+                    CDSSAuditLog.clinic_id == clinic_id,
+                )
+            )
+            .order_by(desc(CDSSAuditLog.timestamp))
+            .limit(page_size * page)
+        )
+        cdss_result = await self.db.execute(cdss_query)
+        for cdss, f_name, l_name, title in cdss_result.all():
+            clinician = f"{title or ''} {f_name or ''} {l_name or ''}".strip() or "Unknown"
+            events.append({
+                "id": f"cdss_{cdss.log_id}",
+                "type": "cdss",
+                "title": f"{cdss.calculation_type} Score: {cdss.calculated_score or 'N/A'}",
+                "description": f"Risk: {cdss.risk_category or 'N/A'}",
+                "timestamp": cdss.timestamp.isoformat(),
+                "user_name": clinician,
+            })
+
+        # 4. Fetch DICOM Studies
+        dicom_query = (
+            select(PatientStudyLink, User.first_name, User.last_name, User.title)
+            .outerjoin(User, PatientStudyLink.linked_by_user_id == User.user_id)
+            .where(
+                and_(
+                    PatientStudyLink.patient_id == patient_id,
+                    PatientStudyLink.clinic_id == clinic_id,
+                )
+            )
+            .order_by(desc(PatientStudyLink.created_at))
+            .limit(page_size * page)
+        )
+        dicom_result = await self.db.execute(dicom_query)
+        for link, f_name, l_name, title in dicom_result.all():
+            user = f"{title or ''} {f_name or ''} {l_name or ''}".strip() or "Unknown"
+            events.append({
+                "id": f"dicom_{link.id}",
+                "type": "dicom",
+                "title": f"Imaging Study: {link.modality or 'Unknown'}",
+                "description": link.study_description or "No description",
+                "timestamp": link.created_at.isoformat(),
+                "user_name": user,
+            })
+
+        # 5. Fetch Vitals (as Observations)
+        vitals_query = (
+            select(Vitals, User.first_name, User.last_name, User.title)
+            .outerjoin(User, Vitals.recorded_by == User.user_id)
+            .where(Vitals.patient_id == patient_id)
+            .order_by(desc(Vitals.recorded_at))
+            .limit(page_size * page)
+        )
+        # Note: Vitals are linked via encounters which have clinic_id, 
+        # but vitals themselves don't have clinic_id in our model.
+        # RLS is handled by patient_id which is checked above.
+        vitals_result = await self.db.execute(vitals_query)
+        for vitals, f_name, l_name, title in vitals_result.all():
+            recorder = f"{title or ''} {f_name or ''} {l_name or ''}".strip() or "Unknown"
+            bp = f"BP: {vitals.systolic_bp}/{vitals.diastolic_bp}" if vitals.systolic_bp else ""
+            hr = f"HR: {vitals.heart_rate}" if vitals.heart_rate else ""
+            desc_vitals = ", ".join(filter(None, [bp, hr]))
+            events.append({
+                "id": f"vitals_{vitals.vital_id}",
+                "type": "observation",
+                "title": "Vital Signs Recorded",
+                "description": desc_vitals or "Vitals recorded",
+                "timestamp": vitals.recorded_at.isoformat(),
+                "user_name": recorder,
+            })
+
+        # Sort combined events by timestamp descending
+        events.sort(key=lambda x: x["timestamp"], reverse=True)
+
+        # Paginate results
+        total = len(events)
+        start = (page - 1) * page_size
+        end = start + page_size
+        paginated_events = events[start:end]
 
         return {
             "patient_id": patient_id,
-            "events": [],
-            "total": 0,
+            "events": paginated_events,
+            "total": total,
             "page": page,
             "page_size": page_size,
         }

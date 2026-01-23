@@ -141,6 +141,10 @@ $RECYCLE.BIN/
 # Docker override files (keep docker-compose.yml)
 docker-compose.override.yml
 docker-compose.local.yml
+docker-compose.tunnel.yml
+
+# Cloudflare tunnel config (contains tunnel ID and credentials path)
+tunnel-config.yml
 
 # Local data volumes (if mounted outside Docker volumes)
 data/

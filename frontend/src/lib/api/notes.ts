@@ -164,7 +164,7 @@ export async function getNote(token: string, noteId: number): Promise<NoteDetail
  * Create a new note.
  */
 export async function createNote(token: string, data: NoteCreateInput): Promise<Note> {
-  return apiFetch<Note>('/api/notes/', {
+  return apiFetch<Note>('/api/notes', {
     method: 'POST',
     body: JSON.stringify(data),
   }, token);

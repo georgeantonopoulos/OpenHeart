@@ -9,7 +9,7 @@ rehashing of legacy bcrypt hashes on successful login.
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Tuple
+from typing import Annotated, Optional, Tuple
 from uuid import uuid4
 
 import pyotp
@@ -52,10 +52,10 @@ legacy_bcrypt = CryptContext(schemes=["bcrypt"], deprecated="auto")
 class TokenPayload(BaseModel):
     """JWT token payload structure."""
 
-    sub: int  # user_id (stored as string in JWT per RFC 7519, coerced to int here)
-    email: str
-    clinic_id: int
-    role: str
+    sub: int  # user_id
+    email: Optional[str] = None
+    clinic_id: Optional[int] = None
+    role: Optional[str] = None
     jti: str = ""  # JWT ID for token blacklisting (empty = legacy token)
     mfa_verified: bool = False
     token_type: str = "access"
@@ -291,7 +291,13 @@ async def get_current_user(
     """
     payload = decode_token(credentials.credentials)
 
-    # Check token blacklist and user invalidation via Redis
+    # Ensure this is an access token
+    if payload.token_type != "access":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type. Expected access token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     redis_client = getattr(request.app.state, "redis", None)
     if redis_client and payload.jti:
         from app.core.redis import get_user_invalidation_time, is_token_blacklisted

@@ -31,12 +31,24 @@ docker compose up
 # Run with rebuild
 docker compose up --build
 
+# Run with Cloudflare tunnel (remote testing)
+docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up --build
+# Then in a separate terminal: cloudflared tunnel --config tunnel-config.yml run
+
 # Backend tests (CDSS has 40+ tests)
 cd backend && pytest
 
 # Frontend tests (Jest configured, tests pending)
 cd frontend && npm test
 ```
+
+## Environment Separation
+
+- **`docker-compose.yml`** — Base config with localhost URLs. Safe to commit and push.
+- **`docker-compose.tunnel.yml`** — Override file for Cloudflare tunnel testing (gitignored). Adds tunnel-specific CORS origins and public URLs.
+- **`tunnel-config.yml`** — Cloudflare tunnel credentials and ingress rules (gitignored).
+
+Never hardcode tunnel/remote URLs in `docker-compose.yml`. Use the override pattern instead.
 
 ## Architecture
 
