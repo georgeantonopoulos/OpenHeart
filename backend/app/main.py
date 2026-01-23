@@ -57,6 +57,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.error(f"Redis connection failed: {e}")
         raise
 
+    # Seed development data (guarded: only runs in dev with empty DB)
+    if settings.environment == "development":
+        try:
+            from app.core.seed import run_seed
+            await run_seed()
+        except Exception as e:
+            logger.warning(f"Development seed failed (non-fatal): {e}")
+
     yield
 
     # Shutdown

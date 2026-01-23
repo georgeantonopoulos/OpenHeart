@@ -26,6 +26,10 @@ from app.modules.notes.models import (  # noqa: F401
     NoteAttachment,
     NoteAccessLog,
 )
+from app.modules.auth.models import UserInvitation, PasswordResetToken  # noqa: F401
+from app.modules.auth.session_manager import UserSession  # noqa: F401
+from app.core.audit import SecurityAudit, CDSSAuditLog  # noqa: F401
+from app.integrations.dicom.models import PatientStudyLink  # noqa: F401
 
 # Alembic Config object
 config = context.config

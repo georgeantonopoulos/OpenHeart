@@ -10,9 +10,15 @@ from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from app.core.encryption import decrypt_pii
 from app.core.permissions import Permission, require_permission
 from app.core.security import TokenPayload, get_current_user
+from app.db.session import get_db
+from app.integrations.dicom.models import PatientStudyLink
 from app.integrations.dicom.schemas import (
     DicomStudy,
     DicomStudyList,
@@ -22,6 +28,7 @@ from app.integrations.dicom.schemas import (
     ViewerUrlResponse,
 )
 from app.integrations.dicom.service import DicomService
+from app.modules.patient.models import Patient
 
 router = APIRouter(prefix="/dicom", tags=["DICOM/Imaging"])
 
@@ -224,7 +231,9 @@ async def link_study_to_patient(
         Depends(require_permission(Permission.PATIENT_WRITE)),
     ],
     dicom: Annotated[DicomService, Depends(get_dicom_service)],
+    db: Annotated[AsyncSession, Depends(get_db)],
     encounter_id: Optional[int] = None,
+    link_reason: Optional[str] = None,
 ):
     """
     Link a DICOM study to an OpenHeart patient record.
@@ -237,8 +246,9 @@ async def link_study_to_patient(
         study_uid: Study Instance UID
         patient_id: OpenHeart patient ID
         encounter_id: Optional encounter ID to link to
+        link_reason: Optional reason for linking
     """
-    # Verify study exists
+    # Verify study exists in Orthanc
     study = await dicom.get_study(study_uid)
     if not study:
         raise HTTPException(
@@ -246,11 +256,37 @@ async def link_study_to_patient(
             detail="Study not found",
         )
 
-    # TODO: Store link in database
-    # This would typically create a record in a patient_studies table
-    # linking the DICOM study_instance_uid to the patient_id
+    # Check for existing link (prevent duplicates)
+    existing = await db.execute(
+        select(PatientStudyLink).where(
+            PatientStudyLink.study_instance_uid == study_uid,
+            PatientStudyLink.patient_id == patient_id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Study is already linked to this patient",
+        )
+
+    # Create link with cached study metadata
+    link = PatientStudyLink(
+        study_instance_uid=study_uid,
+        patient_id=patient_id,
+        encounter_id=encounter_id,
+        clinic_id=user.clinic_id,
+        linked_by_user_id=user.sub,
+        link_reason=link_reason,
+        study_date=study.study_date if study else None,
+        study_description=study.study_description if study else None,
+        modality=study.modalities[0].value if study and study.modalities else None,
+    )
+    db.add(link)
+    await db.commit()
+    await db.refresh(link)
 
     return {
+        "id": link.id,
         "study_instance_uid": study_uid,
         "patient_id": patient_id,
         "encounter_id": encounter_id,
@@ -264,6 +300,7 @@ async def get_patient_studies(
     patient_id: int,
     user: Annotated[TokenPayload, Depends(get_current_user)],
     dicom: Annotated[DicomService, Depends(get_dicom_service)],
+    db: Annotated[AsyncSession, Depends(get_db)],
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
 ):
@@ -271,26 +308,82 @@ async def get_patient_studies(
     Get all DICOM studies linked to a patient.
 
     This queries both:
-    1. Studies explicitly linked in OpenHeart
-    2. Studies matching the patient's DICOM Patient ID
+    1. Studies matching the patient's DICOM Patient ID (Cyprus ID)
+    2. Studies explicitly linked in OpenHeart's database
 
-    Returns studies ordered by date (most recent first).
+    Returns studies ordered by date (most recent first), deduplicated.
     """
-    # TODO: Get patient's DICOM ID from database
-    # For now, search by OpenHeart patient ID pattern
-    # In production, this would look up the patient's Cyprus ID
-    # which is used as the DICOM Patient ID
+    studies_by_uid: dict[str, DicomStudy] = {}
 
-    request = StudySearchRequest(
-        linked_patient_id=patient_id,
-        page=page,
-        per_page=per_page,
+    # 1. Get patient's Cyprus ID from encrypted PII for Orthanc lookup
+    result = await db.execute(
+        select(Patient)
+        .options(selectinload(Patient.pii))
+        .where(Patient.patient_id == patient_id)
+    )
+    patient = result.scalar_one_or_none()
+    if not patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found",
+        )
+
+    # Query Orthanc using the patient's Cyprus ID as DICOM Patient ID
+    if patient.pii and patient.pii.cyprus_id_encrypted:
+        try:
+            cyprus_id = decrypt_pii(patient.pii.cyprus_id_encrypted)
+            if cyprus_id:
+                search_request = StudySearchRequest(
+                    patient_id=cyprus_id,
+                    page=1,
+                    per_page=100,  # Get all matching studies
+                )
+                orthanc_results = await dicom.search_studies(search_request)
+                for study in orthanc_results.studies:
+                    study.linked_patient_id = patient_id
+                    studies_by_uid[study.study_instance_uid] = study
+        except Exception:
+            # Orthanc may be unavailable; continue with DB links only
+            pass
+
+    # 2. Query manually linked studies from database
+    db_result = await db.execute(
+        select(PatientStudyLink)
+        .where(PatientStudyLink.patient_id == patient_id)
+        .order_by(PatientStudyLink.study_date.desc().nulls_last())
+    )
+    db_links = db_result.scalars().all()
+
+    # For DB-linked studies not already found via Orthanc, create entries
+    for link in db_links:
+        if link.study_instance_uid not in studies_by_uid:
+            studies_by_uid[link.study_instance_uid] = DicomStudy(
+                study_instance_uid=link.study_instance_uid,
+                study_date=link.study_date,
+                study_description=link.study_description,
+                linked_patient_id=patient_id,
+                linked_encounter_id=link.encounter_id,
+            )
+        else:
+            # Update existing entry with link metadata
+            studies_by_uid[link.study_instance_uid].linked_encounter_id = link.encounter_id
+
+    # Sort by study date (most recent first), nulls last
+    all_studies = sorted(
+        studies_by_uid.values(),
+        key=lambda s: s.study_date or date.min,
+        reverse=True,
     )
 
-    # For now, return empty as linking not fully implemented
+    # Paginate
+    total = len(all_studies)
+    start = (page - 1) * per_page
+    end = start + per_page
+    paginated = all_studies[start:end]
+
     return DicomStudyList(
-        studies=[],
-        total=0,
+        studies=paginated,
+        total=total,
         page=page,
         per_page=per_page,
     )

@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from fastapi import Request, Response
-from sqlalchemy import BigInteger, Column, DateTime, Integer, String, Text, text
+from sqlalchemy import BigInteger, Column, DateTime, Float, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import INET, JSONB
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
@@ -65,6 +65,31 @@ class SecurityAudit(Base):
     )
 
 
+class CDSSAuditLog(Base):
+    """
+    ORM model for CDSS calculation audit logging.
+
+    All risk score calculations are logged for clinical audit trail.
+    Partitioned by timestamp (yearly) for long-term retention.
+    """
+
+    __tablename__ = "cdss_audit_log"
+    __table_args__ = {"extend_existing": True}
+
+    log_id = Column(BigInteger, primary_key=True, autoincrement=True)
+    calculation_type = Column(String(50), nullable=False)
+    patient_id = Column(Integer, nullable=True)
+    clinician_id = Column(Integer, nullable=False)
+    clinic_id = Column(Integer, nullable=False)
+    input_parameters = Column(JSONB, nullable=False)
+    calculated_score = Column(Float, nullable=True)
+    risk_category = Column(String(50), nullable=True)
+    recommendation = Column(Text, nullable=True)
+    timestamp = Column(
+        DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+    )
+
+
 async def _insert_audit_to_db(audit_data: dict) -> None:
     """
     Insert audit entry to database (fire-and-forget).
@@ -99,6 +124,73 @@ async def _insert_audit_to_db(audit_data: dict) -> None:
             await session.commit()
     except Exception as e:
         logger.error(f"Failed to insert audit log to DB: {e}")
+
+
+async def _insert_note_access_to_db(
+    note_id: int,
+    action: str,
+    user_id: int,
+    user_email: str,
+    ip_address: str,
+    version_accessed: Optional[int] = None,
+    attachment_id: Optional[int] = None,
+) -> None:
+    """
+    Insert note access log entry to database (fire-and-forget).
+
+    Uses its own session to avoid interfering with the request's transaction.
+    """
+    from app.db.session import AsyncSessionLocal
+    from app.modules.notes.models import NoteAccessLog
+
+    try:
+        async with AsyncSessionLocal() as session:
+            log_entry = NoteAccessLog(
+                note_id=note_id,
+                action=action,
+                user_id=user_id,
+                user_email=user_email,
+                ip_address=ip_address,
+                version_accessed=version_accessed,
+                attachment_id=attachment_id,
+            )
+            session.add(log_entry)
+            await session.commit()
+    except Exception as e:
+        logger.error(f"Failed to insert note access log to DB: {e}")
+
+
+async def _insert_cdss_audit_to_db(
+    calculation_type: str,
+    patient_id: Optional[int],
+    input_params: dict,
+    result: dict,
+    user_id: int,
+    clinic_id: int,
+) -> None:
+    """
+    Insert CDSS audit log entry to database (fire-and-forget).
+
+    Uses its own session to avoid interfering with the request's transaction.
+    """
+    from app.db.session import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as session:
+            log_entry = CDSSAuditLog(
+                calculation_type=calculation_type,
+                patient_id=patient_id,
+                clinician_id=user_id,
+                clinic_id=clinic_id,
+                input_parameters=input_params,
+                calculated_score=result.get("total_score"),
+                risk_category=result.get("risk_category"),
+                recommendation=result.get("recommendation"),
+            )
+            session.add(log_entry)
+            await session.commit()
+    except Exception as e:
+        logger.error(f"Failed to insert CDSS audit log to DB: {e}")
 
 
 # =============================================================================
@@ -329,18 +421,16 @@ async def log_cdss_calculation(
         f"Risk: {result.get('risk_category', 'N/A')}"
     )
 
-    # TODO: Insert into cdss_audit_log table
-    # audit_entry = {
-    #     "calculation_type": calculation_type,
-    #     "patient_id": patient_id,
-    #     "input_parameters": input_params,
-    #     "calculated_score": result.get("total_score"),
-    #     "risk_category": result.get("risk_category"),
-    #     "recommendation": result.get("recommendation"),
-    #     "clinician_id": user_id,
-    #     "clinic_id": clinic_id,
-    #     "timestamp": datetime.now(timezone.utc),
-    # }
+    asyncio.create_task(
+        _insert_cdss_audit_to_db(
+            calculation_type=calculation_type,
+            patient_id=patient_id,
+            input_params=input_params,
+            result=result,
+            user_id=user_id,
+            clinic_id=clinic_id,
+        )
+    )
 
 
 async def log_note_access(
@@ -370,4 +460,14 @@ async def log_note_access(
         f"by user {user_id} ({user_email}) from {ip_address}"
     )
 
-    # TODO: Insert into note_access_log table
+    asyncio.create_task(
+        _insert_note_access_to_db(
+            note_id=note_id,
+            action=action,
+            user_id=user_id,
+            user_email=user_email,
+            ip_address=ip_address,
+            version_accessed=version_viewed,
+            attachment_id=attachment_id,
+        )
+    )

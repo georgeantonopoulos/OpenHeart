@@ -64,6 +64,9 @@ dependencies = [
     # FHIR
     "fhir.resources>=7.1.0",
 
+    # DICOM
+    "pydicom>=2.4.0",
+
     # HL7 v2
     "hl7apy>=1.3.4",
 

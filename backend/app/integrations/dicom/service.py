@@ -411,14 +411,14 @@ class DicomService:
         """
         Extract Echo measurements from DICOM Structured Report.
 
-        Parses DICOM SR (Structured Report) to extract quantitative
-        measurements following the TID 5100 template.
+        Fetches the SR instance via WADO-RS and parses it using pydicom
+        to extract quantitative measurements following TID 5100 template.
 
         Args:
             study_uid: Study Instance UID
 
         Returns:
-            EchoMeasurements if SR found, None otherwise
+            EchoMeasurements if SR found and parsed, None otherwise
         """
         try:
             # Find SR series in the study
@@ -447,23 +447,45 @@ class DicomService:
             if not instances:
                 return None
 
-            # Get first SR content
+            # Get the first SR instance UID
             instance_uid = get_tag_value(instances[0], "SOPInstanceUID")
-            metadata = await self._request(
-                "GET",
-                f"/studies/{study_uid}/series/{sr_series}/instances/{instance_uid}/metadata",
-            )
+            if not instance_uid:
+                return None
 
-            # Parse SR content (simplified - real implementation would parse
-            # the full SR document tree using pydicom)
-            # This is a placeholder for the complex SR parsing logic
+            # Fetch raw DICOM SR via WADO-RS
+            from io import BytesIO
+            import pydicom
+
+            wado_url = f"{self.base_url}/studies/{study_uid}/series/{sr_series}/instances/{instance_uid}"
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.get(
+                    wado_url,
+                    auth=self._get_auth(),
+                    headers={"Accept": "application/dicom"},
+                )
+                response.raise_for_status()
+
+            # Parse the DICOM dataset
+            ds = pydicom.dcmread(BytesIO(response.content))
+
+            # Extract measurements using SR parser
+            from app.integrations.dicom.sr_parser import parse_sr_dataset
+            result = parse_sr_dataset(ds)
+
+            if result:
+                return result
+
+            # Fallback: return empty measurements if parsing yields nothing
             return EchoMeasurements(
                 study_instance_uid=study_uid,
-                findings="SR parsing not yet implemented",
+                findings="SR found but no extractable measurements",
             )
 
         except httpx.HTTPError as e:
             logger.error(f"Failed to get echo measurements for {study_uid}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error parsing echo SR for {study_uid}: {e}")
             return None
 
     async def store_instance(self, dicom_data: bytes) -> Optional[str]:
