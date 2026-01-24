@@ -10,6 +10,252 @@ Anticoagulation and antiplatelet management is ~50% of a cardiologist's prescrib
 
 ---
 
+## Cyprus Medication Data Sources (Online Databases)
+
+Research identified multiple publicly accessible sources for Cyprus medication inventory data. These should replace the hardcoded seed data approach with a live, maintainable drug database.
+
+### Tier 1: Primary Sources (Cyprus-Specific, Free, Official)
+
+#### 1. data.gov.cy - Registered Medicines Catalogue (CC BY 4.0)
+
+**URL:** https://www.data.gov.cy/el/dataset/katalogos-eggegrammenon-farmakon
+
+- **Type:** CKAN DataStore API (JSON) + downloadable dataset
+- **License:** Creative Commons Attribution 4.0 International (free, including commercial use)
+- **Content:** ALL pharmaceutical products with marketing authorization in Cyprus
+- **API Pattern:** `https://data.gov.cy/api/action/datastore/search.json?resource_id={ID}&limit=N`
+- **Publisher:** Pharmaceutical Services, Ministry of Health of Cyprus
+- **Update:** When new marketing authorizations are issued
+- **Use Case:** Master list of all legal medications in Cyprus
+
+#### 2. data.gov.cy - Pharmaceutical Products Price List (CC BY 4.0)
+
+**URL:** https://data.gov.cy/el/dataset/timokatalogos-farmakeytikon-proionton
+
+- **Type:** CKAN DataStore API (JSON) + downloadable dataset
+- **License:** CC BY 4.0
+- **Fields:** Pricing Code, Product Name, Packaging, Active Ingredient (Drastiko Systatiko), Marketing Authorisation Holder, Maximum Retail Price (EUR)
+- **Update:** When Medicines Council revises prices (published in Official Gazette)
+- **Use Case:** Drug pricing for invoicing, Gesy reimbursement amounts
+
+#### 3. GeSY Drug Catalogue (Official Formulary)
+
+**URL:** https://www.gesy.org.cy/el-gr/hiopharmacatalogues2020
+
+- **Type:** XLSX (Excel) download
+- **Content:** Catalogue of Pharmaceutical Products covered by GeSY (Phase 2)
+- **Fields:** Product name, active substance, dosage form, strength, packaging, GeSY category, co-payment tier
+- **Coverage:** ~1,500+ pharmaceutical products covered by Gesy
+- **Update:** When products are added/removed from Gesy coverage
+- **Use Case:** Determines which drugs are Gesy-reimbursable and co-payment amounts
+
+#### 4. Ministry of Health Price List (Official)
+
+**URL:** https://www.moh.gov.cy/moh/phs/phs.nsf/dmlpricelist_en/dmlpricelist_en
+
+- **Type:** XLS + PDF download
+- **Content:** Complete price list of all registered medicinal products in Cyprus
+- **Fields:** Product name, packaging, active ingredient, max retail price, MAH
+- **Historical:** Archives available at `/pricelist_arch_en/`
+- **Use Case:** Authoritative pricing reference
+
+### Tier 2: EU-Level Sources (Free, Broader Coverage)
+
+#### 5. EMA Article 57 Public Data (Includes Cyprus)
+
+**URL:** https://www.ema.europa.eu/en/human-regulatory-overview/post-authorisation/data-medicines-iso-idmp-standards-post-authorisation/public-data-article-57-database
+
+- **Type:** Excel download
+- **Content:** ALL medicines authorised in the EEA (centrally and nationally authorized)
+- **Fields:** Product name, active substance, route of administration, country of authorisation, MAH
+- **Cyprus Filter:** Contains Cyprus-specific entries
+- **Use Case:** Cross-reference for EU-authorized medicines available in Cyprus
+
+#### 6. EMA Medicine Data (JSON, Updated Twice Daily)
+
+**URL:** https://www.ema.europa.eu/en/about-us/about-website/download-website-data-json-data-format
+
+- **Type:** JSON download (updated at 06:00 and 18:00 CET)
+- **Content:** Centrally authorised medicines (EPARs) - valid in all EU including Cyprus
+- **Fields:** Medicine name, active substances, therapeutic area, authorization status, type
+- **Use Case:** Centrally authorized drugs (biologics, orphan drugs, etc.)
+
+### Tier 3: Classification & Coding Standards
+
+#### 7. WHO ATC/DDD Index (Classification Backbone)
+
+**URL:** https://atcddd.fhi.no/atc_ddd_index/
+
+- **Official file:** EUR 200 purchase from WHOCC (annual update)
+- **Free alternative:** GitHub [fabkury/atcd](https://github.com/fabkury/atcd) - pre-built CSV with 6,331 ATC codes (CC BY-NC-SA 4.0)
+- **Fields:** ATC code (7 chars, 5 levels), substance name, DDD value, DDD unit, admin route
+- **Use Case:** Hierarchical drug classification, interaction checking by therapeutic class
+
+#### 8. EDQM Standard Terms (Dose Forms & Routes in Greek)
+
+**URL:** https://standardterms.edqm.eu/ (free registration)
+**Alternative:** https://evs.nci.nih.gov/ftp1/EDQM-HealthCare/ (Excel/TXT, free)
+
+- **Content:** 900+ pharmaceutical dose forms, routes, units in 35 languages (including Greek)
+- **Use Case:** Standardized form/route dropdowns with Greek translations
+
+#### 9. DrugBank Open Data (Drug Interactions Reference)
+
+**URL:** https://go.drugbank.com/releases/latest
+
+- **Open tier:** CC0 (public domain, free for any use)
+- **Content:** 14,000+ drugs with ATC codes, drug-drug interactions, targets, pathways
+- **Use Case:** Drug interaction database to supplement hardcoded cardiology rules
+
+### Integration Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                 OpenHeart Drug Database                   │
+│                                                          │
+│  ┌──────────────┐    ┌──────────────┐    ┌────────────┐ │
+│  │ data.gov.cy  │    │ GeSY XLSX    │    │ WHO ATC    │ │
+│  │ Registered   │    │ Catalogue    │    │ (fabkury/  │ │
+│  │ Medicines    │    │ (coverage +  │    │  atcd CSV) │ │
+│  │ (all CY meds)│    │  copay tier) │    │ (classify) │ │
+│  └──────┬───────┘    └──────┬───────┘    └─────┬──────┘ │
+│         │                    │                   │        │
+│         ▼                    ▼                   ▼        │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │            Drug Sync Service (Backend)               │ │
+│  │                                                      │ │
+│  │  1. Fetch data.gov.cy API (registered meds)         │ │
+│  │  2. Match with GeSY catalogue (coverage status)     │ │
+│  │  3. Link to ATC hierarchy (classification)          │ │
+│  │  4. Add pricing from MoH price list                 │ │
+│  │  5. Store in gesy_medications + atc_codes tables    │ │
+│  │  6. Flag cardiology-relevant drugs (ATC C, B01)     │ │
+│  └─────────────────────────────────────────────────────┘ │
+│                          │                                │
+│                          ▼                                │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │         gesy_medications table (existing)            │ │
+│  │  + atc_codes table (existing)                       │ │
+│  │  + NEW: drug_sync_metadata table (sync tracking)    │ │
+│  └─────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Implementation: Drug Sync Service
+
+**New file:** `backend/app/modules/prescription/drug_sync.py`
+
+```python
+class DrugSyncService:
+    """Synchronizes medication data from Cyprus open data sources"""
+
+    async def sync_from_data_gov_cy(self):
+        """
+        1. Fetch registered medicines via CKAN DataStore API
+        2. Parse response: product name, active ingredient, form, strength, MAH
+        3. Match to ATC codes (by active ingredient name)
+        4. Upsert into gesy_medications table
+        5. Log sync metadata (timestamp, record count, errors)
+        """
+
+    async def sync_gesy_catalogue(self, xlsx_path: str):
+        """
+        1. Parse GeSY catalogue XLSX (uploaded by admin)
+        2. Extract: product name, active substance, form, strength, Gesy category
+        3. Match to registered medicines (by product name + strength)
+        4. Update: gesy_covered=True, copay_tier, requires_prior_auth
+        5. Products NOT in catalogue: gesy_covered=False
+        """
+
+    async def sync_pricing(self):
+        """
+        1. Fetch price list from data.gov.cy API
+        2. Update price_eur on matching products
+        3. Log price changes for audit
+        """
+
+    async def sync_atc_classification(self):
+        """
+        1. Load WHO ATC CSV (from bundled file or fresh download)
+        2. Build hierarchy: Level 1 → Level 5
+        3. Upsert into atc_codes table
+        4. Link gesy_medications to atc_codes by code
+        """
+
+    async def flag_cardiology_drugs(self):
+        """
+        Mark drugs in cardiology-relevant ATC categories:
+        - B01A: Antithrombotic agents
+        - C01-C10: Cardiovascular system
+        - Plus specific non-C drugs used in cardiology
+        Tag with: is_cardiology_relevant=True
+        """
+```
+
+**New table:** `drug_sync_metadata`
+```sql
+CREATE TABLE drug_sync_metadata (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source VARCHAR(50) NOT NULL, -- 'data_gov_cy', 'gesy_catalogue', 'moh_pricing', 'who_atc'
+    sync_type VARCHAR(20) NOT NULL, -- 'full', 'incremental'
+    started_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    records_processed INTEGER DEFAULT 0,
+    records_created INTEGER DEFAULT 0,
+    records_updated INTEGER DEFAULT 0,
+    records_skipped INTEGER DEFAULT 0,
+    errors JSONB DEFAULT '[]',
+    status VARCHAR(20) NOT NULL DEFAULT 'running', -- running, completed, failed
+    triggered_by INTEGER REFERENCES users(id),
+    notes TEXT
+);
+```
+
+**Admin endpoints:**
+```python
+POST /api/admin/drug-sync/data-gov-cy       # Trigger sync from data.gov.cy
+POST /api/admin/drug-sync/gesy-catalogue    # Upload + sync GeSY XLSX
+POST /api/admin/drug-sync/pricing           # Sync pricing
+POST /api/admin/drug-sync/atc              # Sync ATC classification
+GET  /api/admin/drug-sync/status           # Latest sync status per source
+GET  /api/admin/drug-sync/history          # Sync history
+```
+
+**Frontend admin page:** `frontend/src/app/settings/drug-database/page.tsx`
+- Show last sync date per source
+- "Sync Now" buttons for each source
+- Upload GeSY catalogue XLSX
+- Sync history log
+- Drug count: total, Gesy-covered, cardiology-relevant
+
+### Bundled Data (Fallback / Development)
+
+For development and initial deployment, bundle:
+1. **WHO ATC CSV** (from fabkury/atcd repo, ~6,300 codes) - committed to repo
+2. **Curated cardiology formulary** (120+ drugs) - hardcoded defaults in `cardiology_formulary.py`
+3. **Seed script** populates tables from bundled data on first run
+
+For production:
+- Admin triggers sync from data.gov.cy to get full Cyprus inventory
+- Uploads latest GeSY catalogue XLSX for coverage status
+- Pricing syncs automatically or on-demand
+
+### Key Decision: data.gov.cy as Primary Source
+
+| Criterion | data.gov.cy | Hardcoded Seed | GeSY XLSX |
+|-----------|-------------|---------------|-----------|
+| Completeness | ALL CY meds | 120 cardiology drugs | GeSY-covered only |
+| Currency | Live API | Stale after commit | Stale after upload |
+| Maintenance | Zero (auto-sync) | Manual updates | Manual upload |
+| ATC codes | Need matching | Hardcoded | May not include |
+| Pricing | Separate dataset | No pricing | May include tier |
+| License | CC BY 4.0 | N/A | Public |
+| Offline dev | No | Yes | Yes |
+
+**Strategy:** Bundle seed data for offline development, sync from data.gov.cy for production.
+
+---
+
 ## Existing Infrastructure (What We Already Have)
 
 ### Database Layer
@@ -730,3 +976,7 @@ These gaps affect Phase 1 but belong to other phases:
 | `frontend/src/lib/api/prescriptions.ts` | CREATE | API client |
 | `frontend/src/app/patients/[id]/page.tsx` | MODIFY | Add medications section |
 | `backend/app/modules/patient/service.py` | MODIFY | Add Rx events to timeline |
+| `backend/app/modules/prescription/drug_sync.py` | CREATE | Cyprus data.gov.cy sync service |
+| `backend/alembic/versions/0009b_drug_sync_metadata.py` | CREATE | Sync tracking table |
+| `frontend/src/app/settings/drug-database/page.tsx` | CREATE | Drug DB admin page |
+| `backend/data/who_atc_ddd_2024.csv` | CREATE | Bundled ATC classification (from fabkury/atcd) |
