@@ -126,7 +126,11 @@ class Settings(BaseSettings):
     # S3/MinIO (File Storage)
     # ==========================================================================
     s3_endpoint: str = Field(
-        default="http://localhost:9000", description="S3/MinIO endpoint"
+        default="http://localhost:9000", description="S3/MinIO endpoint (internal)"
+    )
+    s3_public_endpoint: str = Field(
+        default="http://localhost:9000",
+        description="S3/MinIO endpoint for presigned URLs (browser-accessible)",
     )
     s3_access_key: str = Field(default="openheart_minio")
     s3_secret_key: str = Field(default="openheart_minio_dev")

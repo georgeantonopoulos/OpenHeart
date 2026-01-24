@@ -68,6 +68,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as e:
             logger.warning(f"Development seed failed (non-fatal): {e}")
 
+    # Ensure S3/MinIO bucket exists (non-fatal if MinIO is unavailable)
+    try:
+        from app.integrations.storage import get_storage_client
+        storage = get_storage_client()
+        storage.ensure_bucket(settings.s3_bucket)
+    except Exception as e:
+        logger.warning(f"MinIO bucket initialization failed (non-fatal): {e}")
+
     yield
 
     # Shutdown

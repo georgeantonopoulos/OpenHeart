@@ -417,7 +417,7 @@ class NoteService:
         mime_type: str,
         user_id: int,
         clinic_id: int,
-        storage_bucket: str = "note-attachments",
+        storage_bucket: Optional[str] = None,
     ) -> Optional[NoteAttachment]:
         """
         Add an attachment to a note with text extraction.
@@ -434,6 +434,10 @@ class NoteService:
         Returns:
             Created NoteAttachment or None if note not found
         """
+        if storage_bucket is None:
+            from app.config import settings as app_settings
+            storage_bucket = app_settings.s3_bucket
+
         note = await self.get_note(note_id, clinic_id)
         if not note:
             return None
@@ -493,6 +497,22 @@ class NoteService:
             logger.exception(f"Text extraction failed for attachment {attachment.attachment_id}")
             attachment.extraction_status = "failed"
             attachment.extraction_error = str(e)
+
+        # Upload file to S3/MinIO
+        from app.integrations.storage import get_storage_client
+
+        try:
+            storage = get_storage_client()
+            storage.upload_file(
+                bucket=storage_bucket,
+                key=storage_path,
+                content=file_content,
+                content_type=mime_type,
+            )
+        except Exception as e:
+            logger.error(f"S3 upload failed for attachment: {e}")
+            await self.db.rollback()
+            raise RuntimeError(f"File storage failed: {e}") from e
 
         await self.db.commit()
         await self.db.refresh(attachment)

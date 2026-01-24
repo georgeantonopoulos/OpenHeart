@@ -656,15 +656,23 @@ async def download_attachment(
         attachment_id=attachment_id,
     )
 
-    # In production, generate presigned S3/MinIO URL
-    # For now, return placeholder
-    download_url = f"/api/storage/{attachment.storage_bucket}/{attachment.storage_path}"
+    # Generate presigned S3/MinIO download URL
+    from app.integrations.storage import get_storage_client
+
+    expires_in = 3600
+    storage = get_storage_client()
+    download_url = storage.generate_presigned_url(
+        bucket=attachment.storage_bucket,
+        key=attachment.storage_path,
+        expires_in=expires_in,
+        filename=attachment.original_file_name,
+    )
 
     return AttachmentDownloadResponse(
         attachment_id=attachment.attachment_id,
         file_name=attachment.original_file_name,
         download_url=download_url,
-        expires_in_seconds=3600,
+        expires_in_seconds=expires_in,
     )
 
 
