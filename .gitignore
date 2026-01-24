@@ -183,8 +183,8 @@ tmp/
 # =============================================================================
 # PROJECT-SPECIFIC
 # =============================================================================
-# Agent planning documents (internal use only)
-/agents/*
+# Agent planning documents
+# /agents/* (tracked - contains implementation plans)
 
 # Alembic auto-generated
 backend/alembic/versions/*.pyc
