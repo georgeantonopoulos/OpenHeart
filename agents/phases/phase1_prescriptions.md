@@ -18,7 +18,7 @@ Research identified multiple publicly accessible sources for Cyprus medication i
 
 #### 1. data.gov.cy - Registered Medicines Catalogue (CC BY 4.0)
 
-**URL:** https://www.data.gov.cy/el/dataset/katalogos-eggegrammenon-farmakon
+**URL:** <https://www.data.gov.cy/el/dataset/katalogos-eggegrammenon-farmakon>
 
 - **Type:** CKAN DataStore API (JSON) + downloadable dataset
 - **License:** Creative Commons Attribution 4.0 International (free, including commercial use)
@@ -30,7 +30,7 @@ Research identified multiple publicly accessible sources for Cyprus medication i
 
 #### 2. data.gov.cy - Pharmaceutical Products Price List (CC BY 4.0)
 
-**URL:** https://data.gov.cy/el/dataset/timokatalogos-farmakeytikon-proionton
+**URL:** <https://data.gov.cy/el/dataset/timokatalogos-farmakeytikon-proionton>
 
 - **Type:** CKAN DataStore API (JSON) + downloadable dataset
 - **License:** CC BY 4.0
@@ -40,7 +40,7 @@ Research identified multiple publicly accessible sources for Cyprus medication i
 
 #### 3. GeSY Drug Catalogue (Official Formulary)
 
-**URL:** https://www.gesy.org.cy/el-gr/hiopharmacatalogues2020
+**URL:** <https://www.gesy.org.cy/el-gr/hiopharmacatalogues2020>
 
 - **Type:** XLSX (Excel) download
 - **Content:** Catalogue of Pharmaceutical Products covered by GeSY (Phase 2)
@@ -51,7 +51,7 @@ Research identified multiple publicly accessible sources for Cyprus medication i
 
 #### 4. Ministry of Health Price List (Official)
 
-**URL:** https://www.moh.gov.cy/moh/phs/phs.nsf/dmlpricelist_en/dmlpricelist_en
+**URL:** <https://www.moh.gov.cy/moh/phs/phs.nsf/dmlpricelist_en/dmlpricelist_en>
 
 - **Type:** XLS + PDF download
 - **Content:** Complete price list of all registered medicinal products in Cyprus
@@ -63,7 +63,7 @@ Research identified multiple publicly accessible sources for Cyprus medication i
 
 #### 5. EMA Article 57 Public Data (Includes Cyprus)
 
-**URL:** https://www.ema.europa.eu/en/human-regulatory-overview/post-authorisation/data-medicines-iso-idmp-standards-post-authorisation/public-data-article-57-database
+**URL:** <https://www.ema.europa.eu/en/human-regulatory-overview/post-authorisation/data-medicines-iso-idmp-standards-post-authorisation/public-data-article-57-database>
 
 - **Type:** Excel download
 - **Content:** ALL medicines authorised in the EEA (centrally and nationally authorized)
@@ -73,7 +73,7 @@ Research identified multiple publicly accessible sources for Cyprus medication i
 
 #### 6. EMA Medicine Data (JSON, Updated Twice Daily)
 
-**URL:** https://www.ema.europa.eu/en/about-us/about-website/download-website-data-json-data-format
+**URL:** <https://www.ema.europa.eu/en/about-us/about-website/download-website-data-json-data-format>
 
 - **Type:** JSON download (updated at 06:00 and 18:00 CET)
 - **Content:** Centrally authorised medicines (EPARs) - valid in all EU including Cyprus
@@ -84,7 +84,7 @@ Research identified multiple publicly accessible sources for Cyprus medication i
 
 #### 7. WHO ATC/DDD Index (Classification Backbone)
 
-**URL:** https://atcddd.fhi.no/atc_ddd_index/
+**URL:** <https://atcddd.fhi.no/atc_ddd_index/>
 
 - **Official file:** EUR 200 purchase from WHOCC (annual update)
 - **Free alternative:** GitHub [fabkury/atcd](https://github.com/fabkury/atcd) - pre-built CSV with 6,331 ATC codes (CC BY-NC-SA 4.0)
@@ -93,15 +93,15 @@ Research identified multiple publicly accessible sources for Cyprus medication i
 
 #### 8. EDQM Standard Terms (Dose Forms & Routes in Greek)
 
-**URL:** https://standardterms.edqm.eu/ (free registration)
-**Alternative:** https://evs.nci.nih.gov/ftp1/EDQM-HealthCare/ (Excel/TXT, free)
+**URL:** <https://standardterms.edqm.eu/> (free registration)
+**Alternative:** <https://evs.nci.nih.gov/ftp1/EDQM-HealthCare/> (Excel/TXT, free)
 
 - **Content:** 900+ pharmaceutical dose forms, routes, units in 35 languages (including Greek)
 - **Use Case:** Standardized form/route dropdowns with Greek translations
 
 #### 9. DrugBank Open Data (Drug Interactions Reference)
 
-**URL:** https://go.drugbank.com/releases/latest
+**URL:** <https://go.drugbank.com/releases/latest>
 
 - **Open tier:** CC0 (public domain, free for any use)
 - **Content:** 14,000+ drugs with ATC codes, drug-drug interactions, targets, pathways
@@ -193,6 +193,7 @@ class DrugSyncService:
 ```
 
 **New table:** `drug_sync_metadata`
+
 ```sql
 CREATE TABLE drug_sync_metadata (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -212,6 +213,7 @@ CREATE TABLE drug_sync_metadata (
 ```
 
 **Admin endpoints:**
+
 ```python
 POST /api/admin/drug-sync/data-gov-cy       # Trigger sync from data.gov.cy
 POST /api/admin/drug-sync/gesy-catalogue    # Upload + sync GeSY XLSX
@@ -222,6 +224,7 @@ GET  /api/admin/drug-sync/history          # Sync history
 ```
 
 **Frontend admin page:** `frontend/src/app/settings/drug-database/page.tsx`
+
 - Show last sync date per source
 - "Sync Now" buttons for each source
 - Upload GeSY catalogue XLSX
@@ -231,11 +234,13 @@ GET  /api/admin/drug-sync/history          # Sync history
 ### Bundled Data (Fallback / Development)
 
 For development and initial deployment, bundle:
+
 1. **WHO ATC CSV** (from fabkury/atcd repo, ~6,300 codes) - committed to repo
 2. **Curated cardiology formulary** (120+ drugs) - hardcoded defaults in `cardiology_formulary.py`
 3. **Seed script** populates tables from bundled data on first run
 
 For production:
+
 - Admin triggers sync from data.gov.cy to get full Cyprus inventory
 - Uploads latest GeSY catalogue XLSX for coverage status
 - Pricing syncs automatically or on-demand
@@ -259,6 +264,7 @@ For production:
 ## Existing Infrastructure (What We Already Have)
 
 ### Database Layer
+
 | Asset | Location | Status |
 |-------|----------|--------|
 | ATC Codes table | `backend/alembic/versions/20240102_0002_medical_coding_tables.py` | Complete - hierarchical drug classification |
@@ -266,6 +272,7 @@ For production:
 | Full-text search index | On brand_name + generic_name | Complete - with Greek unaccent support |
 
 ### Backend Services
+
 | Asset | Location | Status |
 |-------|----------|--------|
 | ATCCode model | `backend/app/modules/coding/models.py` | Complete |
@@ -277,12 +284,14 @@ For production:
 | Permission assignments | `backend/app/core/permissions.py:108-109` | Complete - Cardiologist has both |
 
 ### Frontend Components
+
 | Asset | Location | Status |
 |-------|----------|--------|
 | MedicationPicker modal | `frontend/src/components/coding/MedicationPicker.tsx` | Complete - search + select Gesy drugs |
 | Medication API client | `frontend/src/lib/api/coding.ts` | Complete - `searchMedications()` function |
 
 ### Partial/Placeholder References
+
 | Asset | Location | Status |
 |-------|----------|--------|
 | DischargeSummary.prescriptions | `backend/app/modules/encounter/schemas.py:64` | Defined as `Optional[list[dict]]` but unused |
@@ -298,6 +307,7 @@ For production:
 **Location:** `backend/alembic/versions/20240109_0009_prescriptions.py`
 
 #### Table: `prescriptions`
+
 ```sql
 CREATE TABLE prescriptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -384,6 +394,7 @@ CREATE INDEX idx_prescriptions_chronic ON prescriptions(patient_id) WHERE is_chr
 ```
 
 #### Table: `prescription_interactions`
+
 ```sql
 CREATE TABLE prescription_interactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -412,6 +423,7 @@ CREATE INDEX idx_interactions_severity ON prescription_interactions(severity);
 ```
 
 #### Table: `medication_history`
+
 ```sql
 CREATE TABLE medication_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -432,6 +444,7 @@ CREATE INDEX idx_med_history_patient ON medication_history(changed_at);
 ### 2. Backend Module: `backend/app/modules/prescription/`
 
 #### File Structure
+
 ```
 backend/app/modules/prescription/
     __init__.py
@@ -444,6 +457,7 @@ backend/app/modules/prescription/
 ```
 
 #### `models.py` - Key Models
+
 ```python
 class Prescription(Base):
     __tablename__ = "prescriptions"
@@ -467,6 +481,7 @@ class MedicationHistory(Base):
 ```
 
 #### `schemas.py` - Key Schemas
+
 ```python
 class PrescriptionCreate(BaseModel):
     patient_id: int
@@ -533,6 +548,7 @@ class InteractionDetail(BaseModel):
 #### `service.py` - Business Logic
 
 **Key Methods:**
+
 ```python
 class PrescriptionService:
     async def create_prescription(self, data: PrescriptionCreate, user: User) -> PrescriptionResponse:
@@ -591,6 +607,7 @@ class PrescriptionService:
 #### `interactions.py` - Drug Interaction Engine
 
 **Architecture:**
+
 ```python
 # Cardiology-specific interaction rules
 CARDIOLOGY_INTERACTIONS = [
@@ -601,7 +618,7 @@ CARDIOLOGY_INTERACTIONS = [
         severity="major",
         interaction_type="pharmacodynamic",
         description="Combined anticoagulant and antiplatelet therapy significantly increases bleeding risk",
-        management="Consider if dual therapy is clinically necessary. Monitor for bleeding signs. Consider PPI co-prescription."
+        management="Triple therapy (OAC+DAPT) should be limited to 1-4 weeks (ESC 2024). Prefer clopidogrel as the single antiplatelet for long-term dual therapy. Monitor for bleeding signs. Consider PPI co-prescription."
     ),
     # Digoxin + Amiodarone = Toxicity
     InteractionRule(
@@ -636,8 +653,8 @@ CARDIOLOGY_INTERACTIONS = [
         drug_b_atc_codes=["C08DA01", "C08DB01"],  # Verapamil, Diltiazem
         severity="contraindicated",
         interaction_type="pharmacodynamic",
-        description="Combined negative chronotropic/dromotropic effects risk severe bradycardia or heart block",
-        management="AVOID combination. Use dihydropyridine CCB (Amlodipine) instead if CCB needed."
+        description="Combined negative chronotropic/dromotropic effects risk severe bradycardia or heart block. (ESC 2024 Level II B for angina, but CONTRAINDICATED in Heart Failure)",
+        management="CONTRAINDICATED in patients with clinical Heart Failure or LVEF <40%. Use with extreme caution and ECG monitoring in other patients. Use dihydropyridine CCB (Amlodipine) instead if CCB needed in HF."
     ),
     # Warfarin + Amiodarone = INR elevation
     InteractionRule(
@@ -684,6 +701,15 @@ CARDIOLOGY_INTERACTIONS = [
         description="Risk of lactic acidosis with iodinated contrast in renal impairment",
         management="Hold metformin 48h before and after contrast. Check eGFR before resuming."
     ),
+    # Ivabradine + High EF (ESC 2024)
+    InteractionRule(
+        drug_a_atc="C01EB17",  # Ivabradine
+        clinical_context="ef_gt_40_no_hf",
+        severity="contraindicated",
+        interaction_type="pharmacodynamic",
+        description="Ivabradine is contraindicated in patients with LVEF >40% without clinical heart failure (ESC 2024 CCS)",
+        management="Review indication. If no clinical heart failure and EF >40%, discontinue ivabradine."
+    ),
 ]
 
 class InteractionEngine:
@@ -706,6 +732,7 @@ class InteractionEngine:
 #### `cardiology_formulary.py` - Curated Drug Defaults
 
 **Structure:**
+
 ```python
 CARDIOLOGY_FORMULARY = {
     "antiplatelets": [
@@ -795,6 +822,7 @@ GET    /api/formulary/{atc_code}/defaults                # Get default dosing fo
 #### Pages to Create
 
 **`frontend/src/app/patients/[id]/prescriptions/page.tsx`** - Medication List
+
 - Active medications tab (default)
 - History tab (all prescriptions including discontinued)
 - Each medication card shows: drug name, strength, frequency, route, start date, status badge
@@ -803,6 +831,7 @@ GET    /api/formulary/{atc_code}/defaults                # Get default dosing fo
 - Filter by category (Anticoagulants, Antiplatelets, etc.)
 
 **`frontend/src/app/patients/[id]/prescriptions/new/page.tsx`** - New Prescription
+
 - Step 1: Drug selection (search formulary or free-text)
 - Step 2: Dosage configuration (pre-filled from formulary defaults)
 - Step 3: Interaction check result + acknowledge if needed
@@ -810,6 +839,7 @@ GET    /api/formulary/{atc_code}/defaults                # Get default dosing fo
 - Pre-fill from CDSS recommendation if navigated from calculator
 
 **`frontend/src/app/patients/[id]/prescriptions/[rxId]/page.tsx`** - Prescription Detail
+
 - Full prescription information
 - Medication timeline (all status changes)
 - Interaction alerts (if any)
@@ -819,6 +849,7 @@ GET    /api/formulary/{atc_code}/defaults                # Get default dosing fo
 #### Components to Create
 
 **`frontend/src/components/prescription/DrugSearch.tsx`**
+
 - Unified search across formulary + Gesy medications
 - Results grouped by therapeutic category
 - Shows: drug name, strength, form, ATC code, Gesy coverage badge
@@ -826,6 +857,7 @@ GET    /api/formulary/{atc_code}/defaults                # Get default dosing fo
 - Recent prescriptions for this patient highlighted
 
 **`frontend/src/components/prescription/PrescriptionForm.tsx`**
+
 - Drug name (from DrugSearch or manual entry)
 - Strength selector (from available strengths)
 - Dosage input
@@ -837,6 +869,7 @@ GET    /api/formulary/{atc_code}/defaults                # Get default dosing fo
 - Notes field
 
 **`frontend/src/components/prescription/InteractionAlert.tsx`**
+
 - Modal for major/contraindicated interactions (must acknowledge or cancel)
 - Inline warning for moderate interactions
 - Info badge for minor interactions
@@ -845,18 +878,21 @@ GET    /api/formulary/{atc_code}/defaults                # Get default dosing fo
 - "Cancel Prescription" button
 
 **`frontend/src/components/prescription/MedicationList.tsx`**
+
 - Compact list of active medications for patient header/sidebar
 - Status badges: active (green), on_hold (amber), chronic (blue ring)
 - Drug name, strength, frequency on each line
 - Used in patient profile sidebar
 
 **`frontend/src/components/prescription/MedicationTimeline.tsx`**
+
 - Chronological view of all medication events
 - Color-coded: started (green), discontinued (red), renewed (blue), held (amber)
 - Shows reason for each change
 - Links to prescription detail
 
 **`frontend/src/components/prescription/PrescriptionPrint.tsx`**
+
 - Cyprus prescription pad format
 - Clinic letterhead, prescriber details, registration number
 - Patient demographics
@@ -868,6 +904,7 @@ GET    /api/formulary/{atc_code}/defaults                # Get default dosing fo
 #### API Client
 
 **`frontend/src/lib/api/prescriptions.ts`**
+
 ```typescript
 // CRUD
 createPrescription(token, patientId, data)
@@ -897,15 +934,18 @@ getPrescriptionHistory(token, prescriptionId)
 ### 4. Integration Points
 
 #### Wire into Main App
+
 - `backend/app/main.py`: Add `app.include_router(prescription_router, prefix="/api", tags=["Prescriptions"])`
 - `frontend/src/app/patients/[id]/page.tsx`: Add medications section with MedicationList component
 - Patient timeline: Add prescription events to timeline aggregation
 
 #### Wire into Encounter
+
 - `backend/app/modules/encounter/service.py`: When completing encounter, optionally link prescriptions created during the encounter
 - `DischargeSummary.prescriptions`: Populate from prescriptions created in that encounter
 
 #### Wire into CDSS (Phase 5 prerequisite)
+
 - CDSS forms: Add "Prescribe" action button on results page
 - Auto-fill prescription from CDSS recommendation
 - Pre-populate `indication` from calculator context
@@ -913,6 +953,7 @@ getPrescriptionHistory(token, prescriptionId)
 ### 5. Seed Data Updates
 
 **`backend/app/core/seed.py` additions:**
+
 - 3-5 sample prescriptions per test patient
 - Mix of active, discontinued, and chronic medications
 - At least one interaction scenario for testing
@@ -920,6 +961,7 @@ getPrescriptionHistory(token, prescriptionId)
 ### 6. Testing
 
 **`backend/tests/test_prescriptions.py`:**
+
 - Create prescription: valid, invalid patient, missing required fields
 - Interaction detection: each major cardiology interaction pair
 - Therapeutic duplication detection

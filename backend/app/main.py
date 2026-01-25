@@ -20,6 +20,7 @@ from app.db.session import engine
 
 # Import all models to ensure SQLAlchemy mapper resolution works
 import app.integrations.dicom.mwl_models  # noqa: F401 - ScheduledProcedure for Patient relationship
+import app.modules.prescription.models  # noqa: F401 - Prescription models for relationship resolution
 
 # Configure logging
 logging.basicConfig(
@@ -211,6 +212,10 @@ app.include_router(coding_router, prefix="/api", tags=["Medical Coding"])
 # Appointments
 from app.modules.appointment.router import router as appointment_router
 app.include_router(appointment_router, prefix="/api", tags=["Appointments"])
+
+# Prescriptions
+from app.modules.prescription.router import router as prescription_router
+app.include_router(prescription_router, prefix="/api", tags=["Prescriptions"])
 
 # Routers to be implemented:
 # from app.integrations.fhir.router import router as fhir_router

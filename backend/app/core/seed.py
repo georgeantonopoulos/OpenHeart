@@ -22,6 +22,7 @@ from app.modules.appointment.models import Appointment, AppointmentType, Appoint
 from app.modules.clinic.models import Clinic, User, UserClinicRole
 from app.modules.encounter.models import Encounter  # noqa: F401 - needed for FK resolution
 from app.modules.patient.models import Patient, PatientPII
+from app.modules.prescription.models import Prescription, MedicationHistory
 
 logger = logging.getLogger(__name__)
 
@@ -388,6 +389,105 @@ async def seed_appointments(
     logger.info(f"Created {len(DEV_APPOINTMENTS)} appointments for today")
 
 
+# Prescription seed data: realistic cardiology medication regimens
+DEV_PRESCRIPTIONS = [
+    # Patient 0 (Maria, 67F) - Post-PCI on DAPT + statin + ACE-I + beta-blocker
+    {
+        "patient_index": 0,
+        "drugs": [
+            {"drug_name": "Aspirin", "atc_code": "B01AC06", "strength": "75mg", "frequency": "OD", "route": "oral", "is_chronic": True, "indication": "Post-PCI secondary prevention"},
+            {"drug_name": "Clopidogrel", "atc_code": "B01AC04", "strength": "75mg", "frequency": "OD", "route": "oral", "is_chronic": True, "indication": "DAPT post-PCI (12 months)", "duration_days": 365},
+            {"drug_name": "Atorvastatin", "atc_code": "C10AA05", "strength": "80mg", "frequency": "OD", "route": "oral", "is_chronic": True, "indication": "Post-ACS high-intensity statin"},
+            {"drug_name": "Ramipril", "atc_code": "C09AA05", "strength": "5mg", "frequency": "OD", "route": "oral", "is_chronic": True, "indication": "Post-MI cardioprotection"},
+            {"drug_name": "Bisoprolol", "atc_code": "C07AB07", "strength": "5mg", "frequency": "OD", "route": "oral", "is_chronic": True, "indication": "Post-MI heart rate control"},
+        ],
+    },
+    # Patient 1 (Andreas, 53M) - AF on DOAC + rate control
+    {
+        "patient_index": 1,
+        "drugs": [
+            {"drug_name": "Apixaban", "atc_code": "B01AF02", "strength": "5mg", "frequency": "BD", "route": "oral", "is_chronic": True, "indication": "AF stroke prevention (CHA2DS2-VASc 3)"},
+            {"drug_name": "Bisoprolol", "atc_code": "C07AB07", "strength": "10mg", "frequency": "OD", "route": "oral", "is_chronic": True, "indication": "AF rate control"},
+            {"drug_name": "Rosuvastatin", "atc_code": "C10AA07", "strength": "20mg", "frequency": "OD", "route": "oral", "is_chronic": True, "indication": "Hyperlipidemia"},
+        ],
+    },
+    # Patient 3 (Kostas, 71M) - HFrEF on quadruple therapy
+    {
+        "patient_index": 3,
+        "drugs": [
+            {"drug_name": "Sacubitril/Valsartan", "atc_code": "C09DX04", "strength": "97/103mg", "frequency": "BD", "route": "oral", "is_chronic": True, "indication": "HFrEF LVEF 30%"},
+            {"drug_name": "Carvedilol", "atc_code": "C07AG02", "strength": "25mg", "frequency": "BD", "route": "oral", "is_chronic": True, "indication": "HFrEF"},
+            {"drug_name": "Spironolactone", "atc_code": "C03DA01", "strength": "25mg", "frequency": "OD", "route": "oral", "is_chronic": True, "indication": "HFrEF MRA"},
+            {"drug_name": "Dapagliflozin", "atc_code": "A10BK01", "strength": "10mg", "frequency": "OD", "route": "oral", "is_chronic": True, "indication": "HFrEF SGLT2i"},
+            {"drug_name": "Furosemide", "atc_code": "C03CA01", "strength": "40mg", "frequency": "OD", "route": "oral", "is_chronic": True, "indication": "HFrEF congestion"},
+        ],
+    },
+    # Patient 4 (Sophia, 57F) - Hypertension
+    {
+        "patient_index": 4,
+        "drugs": [
+            {"drug_name": "Amlodipine", "atc_code": "C08CA01", "strength": "10mg", "frequency": "OD", "route": "oral", "is_chronic": True, "indication": "Hypertension"},
+            {"drug_name": "Perindopril", "atc_code": "C09AA04", "strength": "8mg", "frequency": "OD", "route": "oral", "is_chronic": True, "indication": "Hypertension"},
+            {"drug_name": "Atorvastatin", "atc_code": "C10AA05", "strength": "20mg", "frequency": "OD", "route": "oral", "is_chronic": True, "indication": "Primary prevention (high CV risk)"},
+        ],
+    },
+]
+
+
+async def seed_prescriptions(
+    db: AsyncSession,
+    patients: list[Patient],
+    clinic_id: int,
+    prescriber_id: int,
+) -> None:
+    """Seed sample prescriptions for development (idempotent)."""
+    # Check if prescriptions already exist
+    result = await db.execute(
+        select(Prescription).where(Prescription.clinic_id == clinic_id).limit(1)
+    )
+    if result.scalar_one_or_none():
+        logger.info("Prescriptions already exist, skipping seed")
+        return
+
+    from app.modules.prescription.schemas import FREQUENCY_DISPLAY_MAP
+
+    rx_count = 0
+    for rx_set in DEV_PRESCRIPTIONS:
+        patient = patients[rx_set["patient_index"]]
+        for drug_data in rx_set["drugs"]:
+            start_date = date.today() - timedelta(days=30)  # Started 30 days ago
+            end_date = None
+            if drug_data.get("duration_days"):
+                end_date = start_date + timedelta(days=drug_data["duration_days"])
+
+            freq = drug_data["frequency"]
+            prescription = Prescription(
+                patient_id=patient.patient_id,
+                prescriber_id=prescriber_id,
+                clinic_id=clinic_id,
+                drug_name=drug_data["drug_name"],
+                atc_code=drug_data["atc_code"],
+                generic_name=drug_data["drug_name"],
+                form="tablet",
+                strength=drug_data["strength"],
+                dosage="1 tablet",
+                frequency=freq,
+                frequency_display=FREQUENCY_DISPLAY_MAP.get(freq, freq),
+                route=drug_data["route"],
+                duration_days=drug_data.get("duration_days"),
+                start_date=start_date,
+                end_date=end_date,
+                is_chronic=drug_data.get("is_chronic", True),
+                status="active",
+                indication=drug_data.get("indication"),
+            )
+            db.add(prescription)
+            rx_count += 1
+
+    await db.flush()
+    logger.info(f"Created {rx_count} sample prescriptions")
+
+
 async def seed_development_data(db: AsyncSession) -> None:
     """
     Seed development database with test users and clinic.
@@ -419,6 +519,10 @@ async def seed_development_data(db: AsyncSession) -> None:
     cardiologist = users.get("cardiologist")
     if cardiologist and patients:
         await seed_appointments(db, patients, clinic.clinic_id, cardiologist.user_id)
+
+    # Seed sample prescriptions
+    if cardiologist and patients:
+        await seed_prescriptions(db, patients, clinic.clinic_id, cardiologist.user_id)
 
     # Commit all changes
     await db.commit()
