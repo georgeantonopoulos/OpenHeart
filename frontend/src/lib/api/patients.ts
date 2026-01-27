@@ -125,7 +125,7 @@ export async function listPatients(
 ): Promise<PatientListResponse> {
   const queryString = buildQueryString(params);
   return apiFetch<PatientListResponse>(
-    `/api/patients${queryString}`,
+    `/api/patients/${queryString}`,
     { method: 'GET' },
     accessToken
   );

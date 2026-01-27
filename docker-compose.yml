@@ -158,7 +158,7 @@ services:
 
   # OHIF Viewer (DICOM Web Viewer)
   ohif:
-    image: ohif/app:v3.9
+    image: ohif/viewer:latest
     platform: linux/amd64
     container_name: openheart-ohif
     volumes:

@@ -184,7 +184,7 @@ tmp/
 # PROJECT-SPECIFIC
 # =============================================================================
 # Agent planning documents
-# /agents/* (tracked - contains implementation plans)
+/agents/* (tracked - contains implementation plans)
 
 # Alembic auto-generated
 backend/alembic/versions/*.pyc
